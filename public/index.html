@@ -32,6 +32,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 20px;
     padding: 14px 20px;
     background: var(--bg);
     border-bottom: 1px solid var(--panel-border);
@@ -201,6 +203,29 @@
     user-select: none;
   }
   .info-icon:hover { background: rgba(245,166,35,0.45); }
+  .hl-bull { color: #4ade80; font-weight: 700; }
+  .hl-bear { color: #f87171; font-weight: 700; }
+
+  /* Colors-off ("plain mode"): neutralizes every colored row/badge/highlight in the app. */
+  body.plain-mode .field.bull,
+  body.plain-mode .field.bear,
+  body.plain-mode .field.ny,
+  body.plain-mode .field.london,
+  body.plain-mode .field.asian {
+    background: #0e1219 !important;
+  }
+  body.plain-mode .field.bull .v,
+  body.plain-mode .field.bear .v,
+  body.plain-mode .field.ny .v,
+  body.plain-mode .field.london .v,
+  body.plain-mode .field.asian .v {
+    color: var(--text) !important;
+  }
+  body.plain-mode .hl-bull,
+  body.plain-mode .hl-bear {
+    color: inherit !important;
+    font-weight: inherit !important;
+  }
 
   .modal-overlay {
     display: none;
@@ -316,6 +341,17 @@
     cursor: pointer;
   }
   #symbolFilter:focus { outline: 1px solid var(--accent); }
+  .ext-links {
+    display: flex;
+    gap: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .ext-links a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .ext-links a:hover { color: var(--accent); }
 
   footer {
     text-align: center;
@@ -336,10 +372,16 @@
   <div class="stats">
     <span><strong id="count">0</strong> received</span>
   </div>
+  <div class="ext-links">
+    <a href="https://www.forexfactory.com/" target="_blank" rel="noopener">forex</a>
+    <a href="https://www.financialjuice.com/home" target="_blank" rel="noopener">News</a>
+  </div>
   <div class="actions">
     <select id="symbolFilter">
       <option value="all">All symbols</option>
     </select>
+    <button id="colorToggleBtn">Colors: On</button>
+    <button id="downloadBtn">Download</button>
     <button id="clearBtn">Clear all</button>
   </div>
 </header>
@@ -366,6 +408,14 @@
   const connEl = document.getElementById('conn');
   const pulseEl = document.getElementById('pulse');
   const clearBtn = document.getElementById('clearBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const colorToggleBtn = document.getElementById('colorToggleBtn');
+  let colorsOn = true;
+  colorToggleBtn.addEventListener('click', () => {
+    colorsOn = !colorsOn;
+    document.body.classList.toggle('plain-mode', !colorsOn);
+    colorToggleBtn.textContent = colorsOn ? 'Colors: On' : 'Colors: Off';
+  });
   const symbolFilterEl = document.getElementById('symbolFilter');
   symbolFilterEl.addEventListener('change', () => {
     activeFilter = symbolFilterEl.value;
@@ -409,6 +459,63 @@
   // Fields whose label starts with any of these are dropped entirely from the dashboard — not
   // grouped, not shown standalone, just skipped. Edit this list to hide/unhide fields.
   const HIDDEN_FIELDS = ['Prev Candle', 'HTF Candle'];
+
+  // Builds the extra lines appended into the headline banner, below the bullet points. Edit this
+  // function to change which fields combine onto which line, or the separator between them.
+  function buildHeadlineHighlights(rows) {
+    const get = (label) => {
+      const r = rows.find(([k]) => k === label);
+      return r ? r[1] : null;
+    };
+    const lines = [];
+
+    const struct15 = get('Structure (15m)');
+    const cloud15 = get('EMA cloud (15m)');
+    if (struct15 || cloud15) {
+      const raw = [
+        struct15 ? `Structure (15m): ${struct15}` : '',
+        cloud15 ? `EMA cloud (15m): ${cloud15}` : '',
+      ].filter(Boolean).join('   ');
+      lines.push(colorizeBullBear(raw));
+    }
+
+    const cloudMtf = get('EMA cloud (1H)'); // MTF = Max Timeframe, defaults to 60min/1H
+    const structMtf = get('Structure (1H)');
+    if (cloudMtf || structMtf) {
+      const raw = [
+        cloudMtf ? `EMA Cloud(MTF): ${cloudMtf}` : '',
+        structMtf ? `Structure (MTF): ${structMtf}` : '',
+      ].filter(Boolean).join('   *   ');
+      lines.push(colorizeBullBear(raw));
+    }
+
+    const buyHigh = get('Buy Zone High');
+    const buyLow = get('Buy Zone Low');
+    if (buyHigh || buyLow) {
+      const priceStr = get('Price');
+      const priceNum = parseFloat(priceStr);
+      const lowNum = parseFloat(buyLow);
+      const highNum = parseFloat(buyHigh);
+      const inZone = !isNaN(priceNum) && !isNaN(lowNum) && !isNaN(highNum) && priceNum >= lowNum && priceNum <= highNum;
+      const priceLabel = inZone ? 'Enter Price' : 'Price';
+      const buyText = `Buy Zone: ${buyLow || '—'} to ${buyHigh || '—'}  (${priceLabel}: ${priceStr || '—'})`;
+      lines.push(inZone ? `<span class="hl-bull">${escapeHtml(buyText)}</span>` : escapeHtml(buyText));
+    }
+
+    return lines;
+  }
+
+  // Escapes text, then colors "Bullish"/"LONG"/"HH / HL" green and "Bearish"/"SHORT"/"LH / LL" red
+  // — used only for the headline highlight lines, so key directional words pop out at a glance.
+  // Mixed structure readings (HH/LL, LH/HL) are left uncolored, matching the table's own rule.
+  function colorizeBullBear(text) {
+    return escapeHtml(text)
+      .replace(/\b(Bullish|LONG)\b/g, '<span class="hl-bull">$1</span>')
+      .replace(/\b(Bearish|SHORT)\b/g, '<span class="hl-bear">$1</span>')
+      .replace(/\bHH\s*\/\s*HL\b/g, '<span class="hl-bull">HH / HL</span>')
+      .replace(/\bLH\s*\/\s*LL\b/g, '<span class="hl-bear">LH / LL</span>')
+      .replace(/\b(confirmed)\b/gi, '<span class="hl-bull">$1</span>');
+  }
 
   // ---------------------------------------------------------------------
   // ALERT TYPE DEFINITIONS — same text as the (i) tooltips next to each alert
@@ -635,6 +742,12 @@
         rows.push([key, line.slice(idx + 2)]);
       });
 
+      // Pull the configured highlight fields up into the headline banner itself, with Bullish/Bearish
+      // words colored so direction pops out at a glance.
+      const highlightLines = buildHeadlineHighlights(rows);
+      const headlineTextHtml = colorizeBullBear(headlineLines.join('\n'));
+      const headlineHtml = headlineTextHtml + (highlightLines.length ? '\n' + highlightLines.join('\n') : '');
+
       const bodyHtml = groupRows(rows).map(group => {
         const fieldsHtml = group.map(([k, v]) => {
           const displayV = shortenLastFlip(k, v);
@@ -663,7 +776,7 @@
             <span class="card-ago" data-ts="${a.receivedAt}">${timeAgo(a.receivedAt)}</span>
           </div>
         </div>
-        ${headlineLines.length ? `<div class="card-headline"><span class="headline-text">${escapeHtml(headlineLines.join('\n'))}</span><span class="info-icon" data-headline="${encodeURIComponent(headlineLines.join('\n'))}">i</span></div>` : ''}
+        ${headlineLines.length ? `<div class="card-headline"><span class="headline-text">${headlineHtml}</span><span class="info-icon" data-headline="${encodeURIComponent(headlineLines.join('\n'))}">i</span></div>` : ''}
         <div class="field-body">${bodyHtml}</div>
       </div>`;
     }).join('');
@@ -736,6 +849,22 @@
     render();
     flashPulse();
   };
+
+  downloadBtn.addEventListener('click', () => {
+    const toExport = activeFilter === 'all' ? alerts : alerts.filter(a => getSymbol(a.raw) === activeFilter);
+    if (!toExport.length) { alert('No alerts to download.'); return; }
+    const blob = new Blob([JSON.stringify(toExport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const label = activeFilter === 'all' ? 'all' : activeFilter.replace(/[^a-zA-Z0-9]/g, '');
+    a.href = url;
+    a.download = `alerts-${label}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
 
   clearBtn.addEventListener('click', () => {
     if (!confirm('Clear all stored alerts?')) return;

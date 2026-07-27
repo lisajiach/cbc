@@ -453,7 +453,7 @@
     ['VWAP', 'EMA 200'],
     ['EMA9/20 (3)', 'EMA9/20 (15)'],
     ['CBC (3m) last flip', 'CBC (15m) last flip', 'CBC (1H) last flip'],
-    ['Buy Zone High', 'Buy Zone Low'],
+    ['Entry Zone High', 'Entry Zone Low'],
   ];
 
   // Fields whose label starts with any of these are dropped entirely from the dashboard — not
@@ -489,8 +489,9 @@
       lines.push(colorizeBullBear(raw));
     }
 
-    const buyHigh = get('Buy Zone High');
-    const buyLow = get('Buy Zone Low');
+    const buyHigh = get('Entry Zone High');
+    const buyLow = get('Entry Zone Low');
+    const zoneDir = get('Entry Zone'); // "LONG" or "SHORT"
     if (buyHigh || buyLow) {
       const priceStr = get('Price');
       const priceNum = parseFloat(priceStr);
@@ -498,8 +499,9 @@
       const highNum = parseFloat(buyHigh);
       const inZone = !isNaN(priceNum) && !isNaN(lowNum) && !isNaN(highNum) && priceNum >= lowNum && priceNum <= highNum;
       const priceLabel = inZone ? 'Enter Price' : 'Price';
-      const buyText = `Buy Zone: ${buyLow || '—'} to ${buyHigh || '—'}  (${priceLabel}: ${priceStr || '—'})`;
-      lines.push(inZone ? `<span class="hl-bull">${escapeHtml(buyText)}</span>` : escapeHtml(buyText));
+      const buyText = `Entry Zone: ${buyLow || '—'} to ${buyHigh || '—'}  (${priceLabel}: ${priceStr || '—'})`;
+      const dirClass = zoneDir === 'LONG' ? 'hl-bull' : zoneDir === 'SHORT' ? 'hl-bear' : null;
+      lines.push(dirClass ? `<span class="${dirClass}">${escapeHtml(buyText)}</span>` : escapeHtml(buyText));
     }
 
     return lines;

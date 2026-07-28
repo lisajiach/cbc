@@ -744,6 +744,27 @@
         rows.push([key, line.slice(idx + 2)]);
       });
 
+      // Fallback for alerts that don't match MapleStax's structured format at all (no parseable
+      // "Key: Value" fields found) — e.g. alerts from a completely different indicator/source hitting
+      // the same webhook. Render as plain text instead of forcing it into the colored table layout.
+      if (rows.length === 0) {
+        const plainSummary = lines[0] || '(empty alert)';
+        const isExpandedPlain = expandedIds.has(a.id);
+        return `<div class="card ${isExpandedPlain ? 'expanded' : ''}" data-id="${a.id}">
+          <div class="card-top" data-toggle="${a.id}">
+            <div class="card-top-left">
+              <span class="chevron">&#9656;</span>
+              <span class="card-summary">${escapeHtml(plainSummary)}</span>
+            </div>
+            <div style="display:flex; align-items:baseline; gap:10px; flex-shrink:0;">
+              <span class="card-time">${new Date(a.receivedAt).toLocaleString()}</span>
+              <span class="card-ago" data-ts="${a.receivedAt}">${timeAgo(a.receivedAt)}</span>
+            </div>
+          </div>
+          <div class="card-headline"><span class="headline-text" style="color:var(--text); white-space:pre-wrap;">${escapeHtml(lines.join('\n'))}</span></div>
+        </div>`;
+      }
+
       // Pull the configured highlight fields up into the headline banner itself, with Bullish/Bearish
       // words colored so direction pops out at a glance.
       const highlightLines = buildHeadlineHighlights(rows);

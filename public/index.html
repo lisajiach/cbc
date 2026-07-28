@@ -341,6 +341,60 @@
     cursor: pointer;
   }
   #symbolFilter:focus { outline: 1px solid var(--accent); }
+  .type-filter-wrap { position: relative; }
+  #typeFilterBtn {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  #typeFilterBtn:hover { border-color: var(--muted); }
+  .type-filter-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 260px;
+    max-height: 60vh;
+    overflow-y: auto;
+    z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .type-filter-panel.open { display: block; }
+  .type-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 2px;
+    font-family: var(--sans);
+    font-size: 12.5px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .type-filter-row input { flex-shrink: 0; }
+  .type-filter-actions {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 6px;
+    margin-top: 6px;
+    border-top: 1px solid var(--panel-border);
+  }
+  .type-filter-actions button {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
   .ext-links {
     display: flex;
     gap: 14px;
@@ -380,6 +434,10 @@
     <select id="symbolFilter">
       <option value="all">All symbols</option>
     </select>
+    <div class="type-filter-wrap">
+      <button id="typeFilterBtn">Alert Types ▾</button>
+      <div class="type-filter-panel" id="typeFilterPanel"></div>
+    </div>
     <button id="colorToggleBtn">Colors: On</button>
     <button id="downloadBtn">Download</button>
     <button id="clearBtn">Clear all</button>
@@ -527,6 +585,11 @@
   // ---------------------------------------------------------------------
   const ALERT_TYPE_DEFS = [
     {
+      test: (l) => /Price Enters HTF EMA9\/20 Zone/i.test(l),
+      title: 'Price Enters HTF EMA9/20 Zone - Entry',
+      def: 'Fires once when: the CONFIRMED HTF direction is bullish (or bearish), AND price just entered the zone BETWEEN the HTF\'s own EMA9 and EMA20 (having been outside it the prior bar) — a pullback into the HTF\'s own moving-average zone during an already-established trend, worth watching for an entry. Message includes a suggested stop-loss at the HTF\'s own EMA20 level.'
+    },
+    {
       test: (l) => /A\+ Setup/i.test(l),
       title: 'A+ Setup (Long/Short)',
       def: 'Fires once when: (1) confirmed HTF CBC direction, (2) chart-timeframe EMA cloud, and (3) HTF EMA cloud all align in the same direction, (4) price is already CONFIRMED on the trade\'s side of VWAP (above VWAP for Long, below VWAP for Short), AND (5) price is still ANTICIPATORY on the Opening Range — hasn\'t broken the ORB high (Long) / ORB low (Short) yet, i.e. before that breakout confirms.'
@@ -596,6 +659,63 @@
     });
     return results;
   }
+
+  const OTHER_TYPE = 'Other (unrecognized)';
+  const ALL_TYPE_TITLES = ALERT_TYPE_DEFS.map(d => d.title).concat([OTHER_TYPE]);
+  const enabledTypes = new Set(ALL_TYPE_TITLES); // all enabled by default
+
+  // Which type-filter title(s) apply to a given alert. Falls back to OTHER_TYPE for alerts that
+  // don't match any known type (foreign alerts, or a bullet-point wording that's changed since).
+  function getAlertTypeTitles(headlineLines) {
+    const matches = getDefinitionsForHeadline(headlineLines).map(d => d.title);
+    return matches.length ? matches : [OTHER_TYPE];
+  }
+
+  // ---- Alert Types filter panel wiring ----
+  const typeFilterBtn = document.getElementById('typeFilterBtn');
+  const typeFilterPanel = document.getElementById('typeFilterPanel');
+
+  function renderTypeFilterPanel() {
+    const rowsHtml = ALL_TYPE_TITLES.map((title, i) => {
+      const checked = enabledTypes.has(title) ? 'checked' : '';
+      return `<label class="type-filter-row"><input type="checkbox" data-type-title="${encodeURIComponent(title)}" ${checked}> ${escapeHtml(title)}</label>`;
+    }).join('');
+    typeFilterPanel.innerHTML = rowsHtml + `<div class="type-filter-actions">
+      <button type="button" id="typeFilterAll">All</button>
+      <button type="button" id="typeFilterNone">None</button>
+    </div>`;
+  }
+  renderTypeFilterPanel();
+
+  typeFilterBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    typeFilterPanel.classList.toggle('open');
+  });
+  document.addEventListener('click', (e) => {
+    if (!typeFilterPanel.contains(e.target) && e.target !== typeFilterBtn) {
+      typeFilterPanel.classList.remove('open');
+    }
+  });
+  typeFilterPanel.addEventListener('click', (e) => {
+    if (e.target.id === 'typeFilterAll') {
+      ALL_TYPE_TITLES.forEach(t => enabledTypes.add(t));
+      renderTypeFilterPanel();
+      render();
+      return;
+    }
+    if (e.target.id === 'typeFilterNone') {
+      enabledTypes.clear();
+      renderTypeFilterPanel();
+      render();
+      return;
+    }
+    if (e.target.matches('input[data-type-title]')) {
+      const title = decodeURIComponent(e.target.dataset.typeTitle);
+      if (e.target.checked) enabledTypes.add(title);
+      else enabledTypes.delete(title);
+      render();
+    }
+  });
 
   function timeAgo(iso) {
     const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -723,7 +843,13 @@
     symbolFilterEl.value = symbols.includes(prevValue) ? prevValue : 'all';
     activeFilter = symbolFilterEl.value;
 
-    const filtered = activeFilter === 'all' ? alerts : alerts.filter(a => getSymbol(a.raw) === activeFilter);
+    const bySymbol = activeFilter === 'all' ? alerts : alerts.filter(a => getSymbol(a.raw) === activeFilter);
+    const filtered = bySymbol.filter(a => {
+      const lines = (a.raw || '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const headlineLines = lines.filter((l, i) => i === 0 || l.startsWith('•'));
+      const types = getAlertTypeTitles(headlineLines);
+      return types.some(t => enabledTypes.has(t));
+    });
 
     countEl.textContent = activeFilter === 'all' ? alerts.length : `${filtered.length} of ${alerts.length}`;
     emptyEl.style.display = filtered.length ? 'none' : 'block';

@@ -355,14 +355,17 @@
   #typeFilterBtn:hover { border-color: var(--muted); }
   .type-filter-panel {
     display: none;
-    position: absolute;
-    top: calc(100% + 6px);
+    /* position is set inline via JS (positionTypeFilterPanel) as position:fixed, clamped to
+       the viewport — CSS top/right below are just an unused fallback in case JS hasn't run yet. */
+    position: fixed;
+    top: 0;
     right: 0;
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 8px;
     padding: 10px;
-    min-width: 260px;
+    width: 260px;
+    max-width: calc(100vw - 16px);
     max-height: 60vh;
     overflow-y: auto;
     z-index: 50;
@@ -687,9 +690,32 @@
   }
   renderTypeFilterPanel();
 
+  // Positions the panel with fixed coords clamped to the viewport, instead of trusting CSS
+  // right:0 (which anchors to the button's own position — fine on desktop where the button
+  // sits at the far right of a single-row header, but on mobile the header wraps and the
+  // button can land left-of-center, pushing a right-anchored 260px panel off the left edge
+  // of the screen entirely, with no way to scroll to the clipped checkboxes).
+  function positionTypeFilterPanel() {
+    const margin = 8;
+    const rect = typeFilterBtn.getBoundingClientRect();
+    const panelWidth = typeFilterPanel.offsetWidth || 260;
+    let left = rect.right - panelWidth; // default: align panel's right edge under the button
+    left = Math.min(left, window.innerWidth - margin - panelWidth); // don't overflow right
+    left = Math.max(left, margin); // don't overflow left
+    let top = rect.bottom + 6;
+    top = Math.min(top, window.innerHeight - margin - 40); // keep panel from starting off-bottom
+    typeFilterPanel.style.left = left + 'px';
+    typeFilterPanel.style.top = top + 'px';
+  }
+  window.addEventListener('resize', () => {
+    if (typeFilterPanel.classList.contains('open')) positionTypeFilterPanel();
+  });
+
   typeFilterBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    const opening = !typeFilterPanel.classList.contains('open');
     typeFilterPanel.classList.toggle('open');
+    if (opening) positionTypeFilterPanel();
   });
   document.addEventListener('click', (e) => {
     if (!typeFilterPanel.contains(e.target) && e.target !== typeFilterBtn) {
@@ -848,7 +874,13 @@
       const lines = (a.raw || '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const headlineLines = lines.filter((l, i) => i === 0 || l.startsWith('•'));
       const types = getAlertTypeTitles(headlineLines);
-      return types.some(t => enabledTypes.has(t));
+      // AND logic: a merged alert (e.g. "HTF CBC Flip - Early" + "LTF + HTF Agreement - Early"
+      // fired together) only shows while EVERY type it contains is checked. Unchecking any one
+      // type immediately hides every alert that includes that condition, even if bundled with
+      // other still-enabled types. (Previously used .some(), which only hid an alert once ALL
+      // of its bundled types were unchecked — so unchecking a single type on a multi-condition
+      // alert appeared to do nothing.)
+      return types.every(t => enabledTypes.has(t));
     });
 
     countEl.textContent = activeFilter === 'all' ? alerts.length : `${filtered.length} of ${alerts.length}`;

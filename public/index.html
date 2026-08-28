@@ -2841,8 +2841,14 @@
   const ALL_TYPE_TITLES = ALERT_TYPE_DEFS.map(d => d.title).concat([OTHER_TYPE]);
   // VWAP/EMA/Bill Breaker Proximity default OFF — these are the noisiest of the newly-added Level
   // Proximity types (VWAP/EMA20/EMA200/Bill Breakers are common levels price crosses constantly),
-  // unlike Pivot/YDH/YDL/ORB proximity which fires far less often and stays on by default.
-  const DEFAULT_OFF_TYPES = ['VWAP Proximity', 'EMA Proximity', 'Bill Breaker Proximity', 'LTF + HTF Agreement - LTF Joined Unchanged HTF']
+  // unlike Pivot/YDH/YDL/ORB proximity which fires far less often and stays on by default. Also off
+  // by default, per request: Startup/Connected (a connection ping, not a trade signal), the three
+  // "Early"/unconfirmed variants (HTF+LTF Agreement, HTF CBC Flip, LTF CBC Flip — each has its own
+  // confirmed counterpart left on), and confirmed LTF CBC Flip itself (kept off while HTF CBC Flip
+  // stays on).
+  const DEFAULT_OFF_TYPES = ['VWAP Proximity', 'EMA Proximity', 'Bill Breaker Proximity', 'LTF + HTF Agreement - LTF Joined Unchanged HTF',
+    'Startup / Connected', 'LTF + HTF Agreement - Early (unconfirmed HTF)', 'HTF CBC Flip - Early (unconfirmed, still forming)',
+    'LTF CBC Flip - Early (unconfirmed, mid-candle)', 'LTF CBC Flip (Long/Short)']
     .concat(ALL_TYPE_TITLES.filter(t => t.startsWith(PRICE_ACTION_PREFIX))); // all 26 Price Action types off by default, per request
   // Alert Types display filter — persisted the same way voiceEnabledTypes is just below (JSON array in
   // localStorage, a Set can't be stored directly). Falls back to the hardcoded DEFAULT_OFF_TYPES-based

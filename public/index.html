@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_61.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_62.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1739,10 +1739,22 @@
 // end, and the app's generic "Key: Value" line parser already turns "Fib Zone (15m): ..." into its
 // own field-body row automatically — no separate app-side fix was needed there beyond the text-
 // shortening in (2) above, which now also shows up in that row's text once a new alert fires.
+// 08/30/2026: v4.62 - Added a new "Price" row to the Status table per follow-up ("add price to the
+// essential below market") — Essential-level (own checkbox show_fld_price, not Full-gated, same
+// tier as Market/CBC/Opening range/etc.), default order slot 2 so it sits directly under Market.
+// Shows the current close, colored green/red/gray on an up/down/unchanged tick vs the prior bar's
+// close (independent of CBC/HTF direction — this is a plain price-tick color, using the same st_bull/
+// st_bear/st_neutral as everywhere else). New input order_price; every other order_* input's default
+// shifted up by 1 (CBC 2-&gt;3, Opening range 3-&gt;4, ... Fib Zone 17-&gt;18) and their maxval bumped
+// 17-&gt;18 to fit the new 18th row; "price" inserted into the ids/orders arrays right after "market".
+// The alert text already included Price (a_status_msg's existing "\nPrice: " line, unchanged) — this
+// only adds it to the two on-chart tables. The commented-out, currently-inert Historical Bar Panel
+// block was left untouched (dead code, doesn't compile-affect anything, not worth touching for a
+// feature that isn't rendered).
 // ====================================================================================
 
 //@version=6
-indicator("v4.61-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.62-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -2082,6 +2094,7 @@ show_chart_info = input.bool(true, "Include Chart name/timeframe row", group="St
 // same set of visible fields. Alert emails are NOT affected by any of these; emails always include
 // every field regardless of what's toggled off here.
 show_fld_market = input.bool(true, "Market", inline="fld1", group="Status Table Fields", tooltip="Show/hide the Market (session) row in the")
+show_fld_price = input.bool(true, "Price", inline="fld1", group="Status Table Fields", tooltip="Show/hide the Price row (current close) in the Status table. Essential-level, like Market above — always visible regardless of Field Set.")
 show_fld_cbc = input.bool(true, "CBC", inline="fld1", group="Status Table Fields", tooltip="Show/hide the CBC (LTF/HTF/MTF) rows in")
 show_fld_opening_range = input.bool(true, "Opening range", inline="fld2", group="Status Table Fields", tooltip="Show/hide the Opening range row in the")
 show_fld_ema_cloud = input.bool(true, "EMA cloud", inline="fld2", group="Status Table Fields", tooltip="Show/hide the EMA cloud (LTF/HTF/MTF)")
@@ -2112,23 +2125,24 @@ eff_show_fld_confluence = status_field_set == "Full" and show_fld_confluence
 // own order (Market, CBC, Opening range, ..., Pivot MTF). Change any number to move that field/group
 // earlier or later. Both tables always share the same order, same as they share visibility. Doesn't
 // affect emails, which always list fields in their own fixed order regardless of this.
-order_market = input.int(1, "Market", minval=1, maxval=17, inline="ord1", group="Status Table Order", tooltip="Row order position for Market. Lower =")
-order_cbc = input.int(2, "CBC", minval=1, maxval=17, inline="ord1", group="Status Table Order", tooltip="Row order position for CBC (LTF/HTF/MTF).")
-order_or = input.int(3, "Opening range", minval=1, maxval=17, inline="ord2", group="Status Table Order", tooltip="Row order position for Opening range.")
-order_cloud = input.int(4, "EMA cloud", minval=1, maxval=17, inline="ord2", group="Status Table Order", tooltip="Row order position for EMA cloud")
-order_vwap = input.int(5, "VWAP", minval=1, maxval=17, inline="ord3", group="Status Table Order", tooltip="Row order position for VWAP. Lower =")
-order_ema200 = input.int(6, "EMA 200", minval=1, maxval=17, inline="ord3", group="Status Table Order", tooltip="Row order position for EMA 200. Lower =")
-order_structure = input.int(7, "Structure", minval=1, maxval=17, inline="ord4", group="Status Table Order", tooltip="Row order position for Structure")
-order_lastflip = input.int(8, "Last flip", minval=1, maxval=17, inline="ord4", group="Status Table Order", tooltip="Row order position for CBC last-flip")
-order_stop = input.int(9, "LTF Trailing Stop", minval=1, maxval=17, inline="ord5", group="Status Table Order", tooltip="Row order position for LTF Trailing Stop.")
-order_entryzone = input.int(10, "Entry Zone", minval=1, maxval=17, inline="ord5", group="Status Table Order", tooltip="Row order position for Entry Zone. Lower")
-order_chart = input.int(11, "Chart", minval=1, maxval=17, inline="ord6", group="Status Table Order", tooltip="Row order position for the Chart row.")
-order_pivltf = input.int(12, "Pivot (LTF)", minval=1, maxval=17, inline="ord6", group="Status Table Order", tooltip="Row order position for the Pivot (LTF)")
-order_pivhtf = input.int(13, "Pivot (HTF)", minval=1, maxval=17, inline="ord7", group="Status Table Order", tooltip="Row order position for the Pivot (HTF)")
-order_pivmtf = input.int(14, "Pivot (MTF)", minval=1, maxval=17, inline="ord7", group="Status Table Order", tooltip="Row order position for the Pivot (MTF)")
-order_fliplevel = input.int(15, "CBC Flip Level", minval=1, maxval=17, inline="ord8", group="Status Table Order", tooltip="Row order position for CBC Flip Level")
-order_confluence = input.int(16, "Confluence Score", minval=1, maxval=17, inline="ord8", group="Status Table Order", tooltip="Row order position for the Confluence Score rows (3 rows, shown consecutively at this slot). Lower = earlier.")
-order_fibzone = input.int(17, "Fib Zone", minval=1, maxval=17, inline="ord9", group="Status Table Order", tooltip="Row order position for the Fib Zone row. Lower = earlier.")
+order_market = input.int(1, "Market", minval=1, maxval=18, inline="ord1", group="Status Table Order", tooltip="Row order position for Market. Lower =")
+order_price = input.int(2, "Price", minval=1, maxval=18, inline="ord1", group="Status Table Order", tooltip="Row order position for Price. Lower = earlier. Default sits it right below Market, per follow-up.")
+order_cbc = input.int(3, "CBC", minval=1, maxval=18, inline="ord1b", group="Status Table Order", tooltip="Row order position for CBC (LTF/HTF/MTF).")
+order_or = input.int(4, "Opening range", minval=1, maxval=18, inline="ord2", group="Status Table Order", tooltip="Row order position for Opening range.")
+order_cloud = input.int(5, "EMA cloud", minval=1, maxval=18, inline="ord2", group="Status Table Order", tooltip="Row order position for EMA cloud")
+order_vwap = input.int(6, "VWAP", minval=1, maxval=18, inline="ord3", group="Status Table Order", tooltip="Row order position for VWAP. Lower =")
+order_ema200 = input.int(7, "EMA 200", minval=1, maxval=18, inline="ord3", group="Status Table Order", tooltip="Row order position for EMA 200. Lower =")
+order_structure = input.int(8, "Structure", minval=1, maxval=18, inline="ord4", group="Status Table Order", tooltip="Row order position for Structure")
+order_lastflip = input.int(9, "Last flip", minval=1, maxval=18, inline="ord4", group="Status Table Order", tooltip="Row order position for CBC last-flip")
+order_stop = input.int(10, "LTF Trailing Stop", minval=1, maxval=18, inline="ord5", group="Status Table Order", tooltip="Row order position for LTF Trailing Stop.")
+order_entryzone = input.int(11, "Entry Zone", minval=1, maxval=18, inline="ord5", group="Status Table Order", tooltip="Row order position for Entry Zone. Lower")
+order_chart = input.int(12, "Chart", minval=1, maxval=18, inline="ord6", group="Status Table Order", tooltip="Row order position for the Chart row.")
+order_pivltf = input.int(13, "Pivot (LTF)", minval=1, maxval=18, inline="ord6", group="Status Table Order", tooltip="Row order position for the Pivot (LTF)")
+order_pivhtf = input.int(14, "Pivot (HTF)", minval=1, maxval=18, inline="ord7", group="Status Table Order", tooltip="Row order position for the Pivot (HTF)")
+order_pivmtf = input.int(15, "Pivot (MTF)", minval=1, maxval=18, inline="ord7", group="Status Table Order", tooltip="Row order position for the Pivot (MTF)")
+order_fliplevel = input.int(16, "CBC Flip Level", minval=1, maxval=18, inline="ord8", group="Status Table Order", tooltip="Row order position for CBC Flip Level")
+order_confluence = input.int(17, "Confluence Score", minval=1, maxval=18, inline="ord8", group="Status Table Order", tooltip="Row order position for the Confluence Score rows (3 rows, shown consecutively at this slot). Lower = earlier.")
+order_fibzone = input.int(18, "Fib Zone", minval=1, maxval=18, inline="ord9", group="Status Table Order", tooltip="Row order position for the Fib Zone row. Lower = earlier.")
 
 // Returns [0,1,2] (index 0=LTF, 1=HTF, 2=MTF) reordered so the SMALLEST actual timeframe renders
 // first, regardless of which conceptual tier (LTF/HTF/MTF) it belongs to — e.g. if HTF is ever
@@ -2175,8 +2189,8 @@ f_add_tf_row(table tbl, int start_row, string label_base,
 // "cbc", ...) in the order they should actually be drawn, per the Order inputs above. Same order
 // used by both the Status table and Historical Bar Panel.
 f_field_render_order() =&gt;
-    array&lt;string&gt; ids = array.from("market", "cbc", "or", "cloud", "vwap", "ema200", "structure", "lastflip", "stop", "entryzone", "chart", "pivltf", "pivhtf", "pivmtf", "fliplevel", "confluence", "fibzone")
-    array&lt;int&gt; orders = array.from(order_market, order_cbc, order_or, order_cloud, order_vwap, order_ema200, order_structure, order_lastflip, order_stop, order_entryzone, order_chart, order_pivltf, order_pivhtf, order_pivmtf, order_fliplevel, order_confluence, order_fibzone)
+    array&lt;string&gt; ids = array.from("market", "price", "cbc", "or", "cloud", "vwap", "ema200", "structure", "lastflip", "stop", "entryzone", "chart", "pivltf", "pivhtf", "pivmtf", "fliplevel", "confluence", "fibzone")
+    array&lt;int&gt; orders = array.from(order_market, order_price, order_cbc, order_or, order_cloud, order_vwap, order_ema200, order_structure, order_lastflip, order_stop, order_entryzone, order_chart, order_pivltf, order_pivhtf, order_pivmtf, order_fliplevel, order_confluence, order_fibzone)
     array&lt;int&gt; sorted_idx = array.sort_indices(orders, order.ascending)
     array&lt;string&gt; sorted_ids = array.new&lt;string&gt;()
     for i = 0 to array.size(sorted_idx) - 1
@@ -4558,7 +4572,7 @@ f_render_status_table() =&gt;
             status_tbl := na
         if na(status_tbl)
             int fld_grp = (show_ltf_in_tables ? 1 : 0) + (show_htf_in_tables ? 1 : 0) + (show_mtf_in_tables ? 1 : 0)
-            int status_row_count = status_tbl_collapsed ? 1 : math.max(1, (show_fld_market ? 1 : 0) + (show_fld_cbc ? fld_grp : 0) + (show_fld_opening_range ? 1 : 0) + (show_fld_ema_cloud ? fld_grp : 0) + (show_fld_vwap ? 1 : 0) + (show_fld_ema200 ? 1 : 0) + (show_fld_structure ? fld_grp : 0) + (eff_show_fld_last_flip ? fld_grp : 0) + (eff_show_fld_stop ? 1 : 0) + (eff_show_fld_buysell ? 1 : 0) + (eff_show_chart_info_tbl ? 1 : 0) + (eff_show_ltf_pivots_tbl ? 1 : 0) + (eff_show_htf_pivots_tbl ? 1 : 0) + (eff_show_mtf_pivots_tbl ? 1 : 0) + (eff_show_fld_flip_level ? fld_grp : 0) + (eff_show_fld_confluence ? 1 : 0) + (show_fld_fib_zone ? 1 : 0))
+            int status_row_count = status_tbl_collapsed ? 1 : math.max(1, (show_fld_market ? 1 : 0) + (show_fld_price ? 1 : 0) + (show_fld_cbc ? fld_grp : 0) + (show_fld_opening_range ? 1 : 0) + (show_fld_ema_cloud ? fld_grp : 0) + (show_fld_vwap ? 1 : 0) + (show_fld_ema200 ? 1 : 0) + (show_fld_structure ? fld_grp : 0) + (eff_show_fld_last_flip ? fld_grp : 0) + (eff_show_fld_stop ? 1 : 0) + (eff_show_fld_buysell ? 1 : 0) + (eff_show_chart_info_tbl ? 1 : 0) + (eff_show_ltf_pivots_tbl ? 1 : 0) + (eff_show_htf_pivots_tbl ? 1 : 0) + (eff_show_mtf_pivots_tbl ? 1 : 0) + (eff_show_fld_flip_level ? fld_grp : 0) + (eff_show_fld_confluence ? 1 : 0) + (show_fld_fib_zone ? 1 : 0))
             status_tbl := table.new(f_status_pos(status_table_position), 2, status_row_count, bgcolor=color.new(#020617, 0), border_color=tbl_border, border_width=1, frame_color=tbl_frame, frame_width=2)
             if status_tbl_collapsed
                 table.merge_cells(status_tbl, 0, 0, 1, 0)
@@ -4619,6 +4633,15 @@ f_render_status_table() =&gt;
             if fid == "market" and show_fld_market
                 table.cell(status_tbl, 0, r, "Market", bgcolor=tbl_label_bg, text_color=txt_label, text_size=tbl_txt_sz, text_halign=text.align_left, tooltip="Which trading session is currently")
                 table.cell(status_tbl, 1, r, mkt_tbl, bgcolor=mkt_session_bg, text_color=mkt_session_txt, text_size=tbl_txt_sz, text_halign=text.align_right)
+                r := r + 1
+            // v4.61: Price — new Essential-level row per follow-up ("add price to the essential below
+            // market"), default order slot 2 so it sits directly under Market. Colored by simple tick
+            // direction vs the prior bar's close (green up, red down, gray unchanged) — same st_bull/
+            // st_bear/st_neutral used everywhere else in this table, not tied to CBC/HTF direction.
+            else if fid == "price" and show_fld_price
+                color price_right = close &gt; close[1] ? st_bull : close &lt; close[1] ? st_bear : st_neutral
+                table.cell(status_tbl, 0, r, "Price", bgcolor=tbl_label_bg, text_color=txt_label, text_size=tbl_txt_sz, text_halign=text.align_left, tooltip="Current close. Green/red on an up/down tick vs the prior bar's close, gray when unchanged.")
+                table.cell(status_tbl, 1, r, str.tostring(close, "#.##"), bgcolor=price_right, text_color=txt_on, text_size=tbl_txt_sz, text_halign=text.align_right)
                 r := r + 1
             else if fid == "cbc" and show_fld_cbc
                 color mtf_right = not mtf_enabled ? st_neutral : na(mtf_cbc_labels_f) ? st_neutral : (mtf_cbc_labels_f == 1.0 ? st_bull : st_bear)

@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_66.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_67.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1810,10 +1810,15 @@
 // doesn't clear the compile, those are the next things to look at, roughly in that order (largest to
 // smallest). Everything commented out here can be restored by uncommenting once there's headroom —
 // possibly a lighter version (e.g. HTF-only, since LTF fires far more often) if you still want it.
+// 08/30/2026: v4.67 - Follow-up label tweak ("change text on fib from 1 to FIB 1 FIB 0"): the 0%/100%
+// Fib line labels in f_render_fib_zone_box() now read "FIB 0" and "FIB 1" instead of plain "0"/"1".
+// Purely cosmetic text-literal change on the two label.new() calls — no new inputs, no logic change,
+// no effect on fib_valid/fib_price_in_zone/cf_f10_fib_touch or anything else that reads the fib_0/
+// fib_100 values themselves.
 // ====================================================================================
 
 //@version=6
-indicator("v4.66-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.67-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -5115,14 +5120,14 @@ f_render_fib_zone_box() =&gt;
         else
             if na(fib_0_ln)
                 fib_0_ln := line.new(fib_box_left, fib_0, bar_index, fib_0, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
-                fib_0_lbl := label.new(bar_index, fib_0, "0", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_0_lbl := label.new(bar_index, fib_0, "FIB 0", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
             else
                 line.set_xy1(fib_0_ln, fib_box_left, fib_0)
                 line.set_xy2(fib_0_ln, bar_index, fib_0)
                 label.set_xy(fib_0_lbl, bar_index, fib_0)
             if na(fib_100_ln)
                 fib_100_ln := line.new(fib_box_left, fib_100, bar_index, fib_100, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
-                fib_100_lbl := label.new(bar_index, fib_100, "1", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_100_lbl := label.new(bar_index, fib_100, "FIB 1", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
             else
                 line.set_xy1(fib_100_ln, fib_box_left, fib_100)
                 line.set_xy2(fib_100_ln, bar_index, fib_100)

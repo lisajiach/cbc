@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_59.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_61.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1705,10 +1705,44 @@
 // of those should also drop "MapleStax" (I read "version title" as the file's own version-numbered
 // name, since that's the one place the token was literally "maplestax_" with a trailing underscore —
 // let me know if you meant one of the other two instead).
+// 08/30/2026: v4.60 - Added an on-chart Fib Zone box per follow-up ("add a small horizontal zone and
+// show text"): a small shaded box anchored to the current bar (width configurable via new
+// fib_zone_box_bars, default 20 bars) spanning the 50%-61.8% retracement of the last confirmed HTF
+// swing (fib_zone_top/fib_zone_bot — same numbers already shown in the Fib Zone Status table row),
+// with those price levels printed as text inside the box. Colored green (st_bull) when price is
+// currently touching the zone (cf_f10_fib_touch, same raw touch state the Fib Golden Pocket
+// confluence factor uses), gray (st_neutral) otherwise. New toggle show_fib_zone_box (Confluence
+// Score group, default on) turns it off independently of the Fib Zone Status table row and of
+// confluence_use_fib — this is a pure chart visual, not a scoring change. New function
+// f_render_fib_zone_box(), called alongside the other three render functions in the shared
+// barstate.islast block. Confirmed via grep that no line.new()/box.new()/plot() previously drew the
+// fib levels anywhere in the file — until now they only ever existed as table/alert text.
+// 08/30/2026: v4.61 - Three follow-up changes. (1) Fib Zone display coloring (Status table row,
+// on-chart box, and the alert text's "[IN ZONE]" tag) now uses a new fib_price_in_zone check — plain
+// "is price literally between the 50% and 61.8% levels right now," no recency window — instead of
+// cf_f10_fib_touch, which stays recency-gated exactly as before for the Confluence Score itself and
+// its Confluence Factors cell. Per follow-up: "should change to green if price is in fib zone .5 to
+// .618." (2) Shortened the Fib Zone value text in all three of those same places: dropped the "50%"/
+// "61.8%" prefixes and tightened from 2 decimals to 1 (e.g. "50% 7723.75 / 61.8% 7722.69" -&gt; "7723.8 /
+// 7722.7") per follow-up ("shorten to one decimal and get rid of 50 and 61.8 before the values").
+// (3) CBC Wire dashboard: added a compact color-coded "Confluence Factors" grid to each expanded
+// alert card, built by parsing the existing "Confluence: N/M  &lt;factors&gt;" alert line (unchanged Pine
+// output — confluence_reasons_str already carried this) into per-factor ✓/✗ + name tokens and
+// rendering them as green/gray chips, the same green-for-counted/gray-for-not rule as the indicator's
+// own Confluence Factors table (this app-side parse has no way to see the indicator's amber
+// "touched but excluded" nuance, since that state isn't encoded in the alert text — only ✓/✗ is).
+// Reuses the existing .row-group/.field/.section-label CSS already used for every other field-body
+// row, so no new styles were added. Per follow-up ("can we create a table like the indicator for
+// confluence in the app when you expand it") — see index_with_FAQ_35.html's buildConfluenceFactorsHtml().
+// Also per follow-up ("in app fib zone values should be there"): confirmed via grep that a_status_msg
+// (which every full-format alert() call already sends) has always included a_fib_line at its very
+// end, and the app's generic "Key: Value" line parser already turns "Fib Zone (15m): ..." into its
+// own field-body row automatically — no separate app-side fix was needed there beyond the text-
+// shortening in (2) above, which now also shows up in that row's text once a new alert fires.
 // ====================================================================================
 
 //@version=6
-indicator("v4.59-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.61-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -1869,6 +1903,8 @@ confluence_vol_mult = input.float(1.5, "Volume Spike: Flip Candle Volume ≥ N �
 htf_vol_avg_len = input.int(20, "Volume Spike: HTF Bars for Average", minval=2, group="Confluence Score", tooltip="How many prior HTF bars feed the trailing average volume used for the spike comparison above.")
 confluence_use_htf_flip = input.bool(true, "Include HTF Flip Recency in score", group="Confluence Score", tooltip="A separate factor from Flip(LTF) above — true from the bar the HTF flips through every subsequent bar, until the next (reverse) HTF flip invalidates it — no fixed bar-count expiry. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown.")
 confluence_use_fib = input.bool(true, "Include Fib Golden Pocket (50%-61.8%) in score", group="Confluence Score", tooltip="10th confluence factor — price wicks into the 50%-61.8% retracement zone of the last confirmed HTF swing (same swing used by Liquidity Sweep), within the same recency window as Zone/Sweep/Structure/Volume above. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown. Also shown as its own always-visible Status table row regardless of this toggle.")
+show_fib_zone_box = input.bool(true, "Show Fib Zone box on chart", inline="fibbox", group="Confluence Score", tooltip="Draws a small shaded horizontal zone at the 50%-61.8% retracement levels, anchored near the current bar, with the price levels printed as text inside it. Green when price is currently touching the zone (matches the Fib Golden Pocket factor's raw touch state), gray otherwise. Independent of the Fib Zone Status table row and of the Include-in-score toggle above — this is purely a chart visual.")
+fib_zone_box_bars = input.int(20, "width (bars)", minval=2, maxval=300, inline="fibbox", group="Confluence Score", tooltip="How many bars back from the current bar the Fib Zone box spans.")
 // v4.55: replaces the old packed-string row 1/row 2/Info row breakdown — a small dedicated table
 // (separate from the Status table, same pattern as the Pivot Points table below) with one cell per
 // factor so each can carry its own color: green = counted toward the score, amber = the touch
@@ -4110,6 +4146,12 @@ float fib_50 = fib_valid ? (cbc ? h_last_hi - 0.5 * (h_last_hi - h_last_lo) : h_
 float fib_618 = fib_valid ? (cbc ? h_last_hi - 0.618 * (h_last_hi - h_last_lo) : h_last_lo + 0.618 * (h_last_hi - h_last_lo)) : na
 float fib_zone_top = fib_valid ? math.max(fib_50, fib_618) : na
 float fib_zone_bot = fib_valid ? math.min(fib_50, fib_618) : na
+// v4.61: simple, non-recency-gated "is price literally between the two levels right now" check —
+// deliberately separate from cf_f10_fib_touch below (which additionally requires the recency window,
+// since that one feeds the Confluence Score). This one drives display coloring only (Status table
+// row, on-chart box, alert text), per follow-up ("should change to green if price is in fib zone .5
+// to .618") — the scoring factor's own recency behavior is unchanged.
+bool fib_price_in_zone = fib_valid and low &lt;= fib_zone_top and high &gt;= fib_zone_bot
 bool cf_f10_fib_touch = fib_valid and low &lt;= fib_zone_top and high &gt;= fib_zone_bot and ltf_bars_since_htf_flip &lt;= confluence_recency_ltf_bars
 bool cf_f10_fib = confluence_use_fib and cf_f10_fib_touch
 int confluence_score = (cf_f1_flip ? 1 : 0) + (cf_f2_htf ? 1 : 0) + (cf_f3_cloud ? 1 : 0) + (cf_f4_level ? 1 : 0) + (cf_f5_zone ? 1 : 0) + (cf_f6_sweep ? 1 : 0) + (cf_f7_structure_break ? 1 : 0) + (cf_f8_volume ? 1 : 0) + (cf_f9_htf_flip ? 1 : 0) + (cf_f10_fib ? 1 : 0)
@@ -4615,14 +4657,17 @@ f_render_status_table() =&gt;
                 table.cell(status_tbl, 1, r, e200_msg, bgcolor=e200_right, text_color=txt_on, text_size=tbl_txt_sz, text_halign=text.align_right)
                 r := r + 1
             // v4.54: Fib Zone — Essential-level row (own checkbox, not Full-gated, per follow-up),
-            // reusing fib_50/fib_618/fib_valid/cf_f10_fib_touch already computed above alongside the
-            // Fib confluence factor. Green background when price is currently inside the zone AND
-            // within the Confluence Score's recency window (same condition cf_f10_fib_touch checks);
-            // otherwise neutral.
+            // reusing fib_50/fib_618/fib_valid already computed above alongside the Fib confluence
+            // factor. v4.61 changed the green/neutral rule to fib_price_in_zone (see below) — no
+            // longer tied to the Confluence Score's recency window.
             else if fid == "fibzone" and show_fld_fib_zone
-                string fib_msg = not fib_valid ? "—" : "50% " + str.tostring(fib_50, "#.##") + " / 61.8% " + str.tostring(fib_618, "#.##") + (cf_f10_fib_touch ? "  IN" : "")
-                color fib_right = cf_f10_fib_touch ? st_bull : st_neutral
-                table.cell(status_tbl, 0, r, "Fib Zone (" + htf_tf_disp_val + ")", bgcolor=tbl_label_bg, text_color=txt_label, text_size=tbl_txt_sz, text_halign=text.align_left, tooltip="50%-61.8% retracement zone of the last confirmed HTF swing high/low (same swing Liquidity Sweep uses). Green + \"IN\" when price is currently wicking into the zone within the Confluence Score's recency window.")
+                // v4.61: dropped the "50%"/"61.8%" prefixes and tightened to 1 decimal per follow-up
+                // ("shorten to one decimal and get rid of 50 and 61.8 before the values"); color now
+                // driven by fib_price_in_zone (simple geometric in-zone check, no recency gate) instead
+                // of cf_f10_fib_touch, per follow-up ("should change to green if price is in fib zone").
+                string fib_msg = not fib_valid ? "—" : str.tostring(fib_50, "#.#") + " / " + str.tostring(fib_618, "#.#") + (fib_price_in_zone ? "  IN" : "")
+                color fib_right = fib_price_in_zone ? st_bull : st_neutral
+                table.cell(status_tbl, 0, r, "Fib Zone (" + htf_tf_disp_val + ")", bgcolor=tbl_label_bg, text_color=txt_label, text_size=tbl_txt_sz, text_halign=text.align_left, tooltip="50%-61.8% retracement zone of the last confirmed HTF swing high/low (same swing Liquidity Sweep uses). Green + \"IN\" whenever price is currently between the two levels (unlike the Confluence Score's own Fib factor, this row's color ignores the recency window).")
                 table.cell(status_tbl, 1, r, fib_msg, bgcolor=fib_right, text_color=txt_on, text_size=tbl_txt_sz, text_halign=text.align_right)
                 r := r + 1
             else if fid == "structure" and show_fld_structure
@@ -4825,10 +4870,51 @@ f_render_confluence_cells() =&gt;
             table.cell(conf_tbl, i % conf_cols, i / conf_cols, array.get(conf_texts, i), bgcolor=array.get(conf_colors, i), text_color=txt_on, text_size=conf_txt_sz, text_halign=text.align_center, tooltip=array.get(conf_tips, i))
     true
 
+// v4.60: on-chart Fib Zone box — a small shaded box near the current bar showing the 50%-61.8%
+// retracement levels as text. v4.61: colored by fib_price_in_zone (plain in-zone check) rather than
+// the Fib Golden Pocket confluence factor's recency-gated touch state — see fib_price_in_zone's own
+// comment. Reuses fib_valid/fib_zone_top/fib_zone_bot/fib_50/fib_618/fib_price_in_zone (all top-level,
+// computed once above alongside Liquidity Sweep/Pivot(HTF)) plus htf_tf_disp_val/st_bull/st_neutral/
+// txt_on (also top-level, already proven safe to read from a sibling function by
+// f_render_confluence_cells()). Per the v4.56/v4.57 lesson, computes its OWN local text-size
+// (fib_box_txt_sz) via f_table_text_size() rather than reaching into f_render_status_table()'s
+// tbl_txt_sz or f_render_confluence_cells()'s conf_txt_sz — those are local to their own functions
+// and not visible here. Uses box.set_*() setters every bar instead of delete+recreate (a box's
+// top/bottom/text/colors are all mutable in place, unlike a table's fixed row/column count), so this
+// never churns box IDs against max_boxes_count.
+f_render_fib_zone_box() =&gt;
+    var box fib_zone_bx = na
+    if not show_fib_zone_box or not fib_valid
+        box.delete(fib_zone_bx)
+        fib_zone_bx := na
+    else
+        string fib_box_txt_sz = f_table_text_size(status_table_text_size)
+        int fib_box_left = math.max(0, bar_index - fib_zone_box_bars)
+        // v4.61: color/text now driven by fib_price_in_zone (plain "is price between the two levels
+        // right now" check) instead of cf_f10_fib_touch, matching the Status table row's same change
+        // — see fib_price_in_zone's own comment above for why this is deliberately not recency-gated.
+        color fib_box_bg = fib_price_in_zone ? color.new(st_bull, 70) : color.new(st_neutral, 85)
+        color fib_box_bd = fib_price_in_zone ? st_bull : st_neutral
+        string fib_box_txt = "Fib " + htf_tf_disp_val + "  " + str.tostring(fib_50, "#.#") + " / " + str.tostring(fib_618, "#.#") + (fib_price_in_zone ? "  IN" : "")
+        if na(fib_zone_bx)
+            fib_zone_bx := box.new(left=fib_box_left, top=fib_zone_top, right=bar_index, bottom=fib_zone_bot, border_color=fib_box_bd, border_width=1, bgcolor=fib_box_bg, extend=extend.none, text=fib_box_txt, text_color=txt_on, text_size=fib_box_txt_sz, text_halign=text.align_center, text_valign=text.align_center)
+        else
+            box.set_left(fib_zone_bx, fib_box_left)
+            box.set_right(fib_zone_bx, bar_index)
+            box.set_top(fib_zone_bx, fib_zone_top)
+            box.set_bottom(fib_zone_bx, fib_zone_bot)
+            box.set_bgcolor(fib_zone_bx, fib_box_bg)
+            box.set_border_color(fib_zone_bx, fib_box_bd)
+            box.set_text(fib_zone_bx, fib_box_txt)
+            box.set_text_color(fib_zone_bx, txt_on)
+            box.set_text_size(fib_zone_bx, fib_box_txt_sz)
+    true
+
 if barstate.islast
     f_render_status_table()
     f_render_pivot_table()
     f_render_confluence_cells()
+    f_render_fib_zone_box()
 
 // ===========================
 // Alerts — deliberately independent of "show_status_table": these should fire whether or not the
@@ -4977,7 +5063,10 @@ string a_pivot_s3_part = not (show_pivot_points and show_pivot_s3) ? "" : "\nPiv
 string a_pivot_points_line = not alert_show_pivot_points ? "" : a_pivot_r3_part + a_pivot_r2_part + a_pivot_r1_part + a_pivot_pp_part + a_pivot_s1_part + a_pivot_s2_part + a_pivot_s3_part
 // v4.54: Fib Zone alert line — always included (no separate email toggle, matching how VWAP/EMA200
 // lines below are unconditional), reusing fib_valid/fib_50/fib_618/cf_f10_fib_touch computed above.
-string a_fib_line = not fib_valid ? "" : "\nFib Zone (" + htf_tf_disp_val + "): 50% " + str.tostring(fib_50, "#.##") + " / 61.8% " + str.tostring(fib_618, "#.##") + (cf_f10_fib_touch ? " [IN ZONE]" : "")
+// v4.61: same "50%"/"61.8%"-prefix drop, 1-decimal, and fib_price_in_zone (not recency-gated) change
+// as the Status table row and on-chart box — this is the copy of that same text the app parses out
+// of the alert body into its own "Fib Zone (Nm)" field/row.
+string a_fib_line = not fib_valid ? "" : "\nFib Zone (" + htf_tf_disp_val + "): " + str.tostring(fib_50, "#.#") + " / " + str.tostring(fib_618, "#.#") + (fib_price_in_zone ? " [IN ZONE]" : "")
 
 string a_mtf_cbc_part = not show_mtf_in_tables ? "" : "\nCBC (" + mtf_timeframe + "): " + a_mtf_msg + "\nCBC (" + mtf_timeframe + ", live/unconfirmed): " + a_mtf_live_msg
 string a_mtf_cloud_part = not show_mtf_in_tables ? "" : "\nEMA cloud (" + mtf_timeframe + "): " + a_mtf_cloud_msg
@@ -7297,6 +7386,36 @@ if barstate.islast
     return lines;
   }
 
+  // Parses the Pine script's "Confluence: N/M  <factors>" alert line into a small color-coded grid
+  // — the app-side equivalent of the indicator's own on-chart Confluence Factors table. The factors
+  // string (confluence_reasons_str in the Pine script) is a run of "✓Name" / "✗Name" tokens, each
+  // optionally followed by "(detail)" (e.g. "✓Flip(3)  ✓HTF(15)  ✗Zone  ...") — the line count varies
+  // (6-10 factors) since the 4 extended factors are omitted entirely from the string when their own
+  // toggle is off. Returns '' when no such line is found (older alerts, or non-CBC-Wire alert types),
+  // so this is always safe to call unconditionally. Reuses the existing .row-group/.field/
+  // .section-label classes already styling every other field-body row — no new CSS needed. Note:
+  // the alert text only carries ✓/✗ (counted vs not), not the indicator's 3-way green/amber/gray —
+  // "touched but excluded by recency or its own toggle" isn't distinguishable from plain "not true"
+  // here, so a factor that would show amber on the indicator just shows gray (neutral) in this grid.
+  function buildConfluenceFactorsHtml(lines) {
+    const line = lines.find(l => l.startsWith('Confluence:'));
+    if (!line) return '';
+    const m = line.match(/^Confluence:\s*(\d+)\/(\d+)\s+(.*)$/);
+    if (!m) return '';
+    const [, score, max, factorsStr] = m;
+    const factors = [];
+    const re = /([✓✗])([A-Za-z]+)(?:\(([^)]*)\))?/g;
+    let fm;
+    while ((fm = re.exec(factorsStr))) {
+      factors.push({ ok: fm[1] === '✓', name: fm[2] + (fm[3] ? `(${fm[3]})` : '') });
+    }
+    if (!factors.length) return '';
+    const cellsHtml = factors.map(f =>
+      `<div class="field ${f.ok ? 'bull' : 'neutral'}"><span class="k">${escapeHtml(f.name)}</span><span class="v">${f.ok ? '✓' : '✗'}</span></div>`
+    ).join('');
+    return `<div class="section-label">Confluence Factors (${escapeHtml(score)}/${escapeHtml(max)})</div><div class="row-group">${cellsHtml}</div>`;
+  }
+
   // Escapes text, then colors "Bullish"/"LONG"/"HH / HL" green and "Bearish"/"SHORT"/"LH / LL" red
   // — used only for the headline highlight lines, so key directional words pop out at a glance.
   // Mixed structure readings (HH/LL, LH/HL) are left uncolored, matching the table's own rule.
@@ -8479,10 +8598,12 @@ if barstate.islast
         }).join('');
         return `<div class="row-group">${fieldsHtml}</div>`;
       };
+      const confluenceFactorsHtml = buildConfluenceFactorsHtml(lines);
       const bodyHtml =
         (groups.slice(0, 2).length ? `<div class="section-label">Context</div>` : '') +
         groups.slice(0, 2).map(renderGroup).join('') +
         flipLevelRowHtml +
+        confluenceFactorsHtml +
         groups.slice(2).map(renderGroup).join('');
 
       // One-line summary shown in the collapsed header — tightened to match CBC Wire's terse

@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_62.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_63.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1751,10 +1751,25 @@
 // only adds it to the two on-chart tables. The commented-out, currently-inert Historical Bar Panel
 // block was left untouched (dead code, doesn't compile-affect anything, not worth touching for a
 // feature that isn't rendered).
+// 08/30/2026: v4.63 - Added the "0%" and "100%" Fib lines per follow-up ("can you put in the zero and
+// 1 lines for fib") — two extra dashed reference lines at fib_0/fib_100, the actual last-confirmed
+// HTF swing high/low the existing 50%-61.8% golden pocket is measured from (same direction convention
+// as fib_50/fib_618: 0% is the side the retracement starts FROM — h_last_hi when bullish, h_last_lo
+// when bearish — 100% the far side), each labeled "0"/"1" at the right edge using the exact
+// label.style_label_left + fully-transparent-bg pattern already proven elsewhere in this file (YDH/
+// YDL/PMH/PML/pivot labels), not the untested label.style_none. New toggle show_fib_01_lines (default
+// on) plus a color input col_fib_01_lines, both independent of show_fib_zone_box — either can be
+// switched off without affecting the other. Same width (fib_zone_box_bars) and update-in-place
+// pattern (line.set_xy1/xy2, label.set_xy — no delete+recreate churn) as the existing box. Restructured
+// f_render_fib_zone_box() so the fib_valid check now gates all 5 objects (box + 2 lines + 2 labels)
+// at the top, with show_fib_zone_box and show_fib_01_lines each independently gating their own half
+// beneath that — previously the box's own toggle was combined with the fib_valid check in one
+// condition, which would no longer correctly isolate the two toggles once a second feature shared
+// the same function.
 // ====================================================================================
 
 //@version=6
-indicator("v4.62-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.63-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -1917,6 +1932,8 @@ confluence_use_htf_flip = input.bool(true, "Include HTF Flip Recency in score", 
 confluence_use_fib = input.bool(true, "Include Fib Golden Pocket (50%-61.8%) in score", group="Confluence Score", tooltip="10th confluence factor — price wicks into the 50%-61.8% retracement zone of the last confirmed HTF swing (same swing used by Liquidity Sweep), within the same recency window as Zone/Sweep/Structure/Volume above. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown. Also shown as its own always-visible Status table row regardless of this toggle.")
 show_fib_zone_box = input.bool(true, "Show Fib Zone box on chart", inline="fibbox", group="Confluence Score", tooltip="Draws a small shaded horizontal zone at the 50%-61.8% retracement levels, anchored near the current bar, with the price levels printed as text inside it. Green when price is currently touching the zone (matches the Fib Golden Pocket factor's raw touch state), gray otherwise. Independent of the Fib Zone Status table row and of the Include-in-score toggle above — this is purely a chart visual.")
 fib_zone_box_bars = input.int(20, "width (bars)", minval=2, maxval=300, inline="fibbox", group="Confluence Score", tooltip="How many bars back from the current bar the Fib Zone box spans.")
+show_fib_01_lines = input.bool(true, "Show 0% / 100% Fib lines", inline="fib01", group="Confluence Score", tooltip="Draws two extra reference lines at the 0% and 100% levels — the actual last confirmed HTF swing high/low the 50%-61.8% zone above is measured from, i.e. the full swing range. Same width (bars back) as the Fib Zone box above. Labeled \"0\" and \"1\" at the right edge.")
+col_fib_01_lines = input.color(color.gray, "", inline="fib01", group="Confluence Score")
 // v4.55: replaces the old packed-string row 1/row 2/Info row breakdown — a small dedicated table
 // (separate from the Status table, same pattern as the Pivot Points table below) with one cell per
 // factor so each can carry its own color: green = counted toward the score, amber = the touch
@@ -4166,6 +4183,14 @@ float fib_zone_bot = fib_valid ? math.min(fib_50, fib_618) : na
 // row, on-chart box, alert text), per follow-up ("should change to green if price is in fib zone .5
 // to .618") — the scoring factor's own recency behavior is unchanged.
 bool fib_price_in_zone = fib_valid and low &lt;= fib_zone_top and high &gt;= fib_zone_bot
+// v4.63: the "0%" and "100%" anchor levels themselves — i.e. the actual last-confirmed HTF swing
+// high/low the retracement is measured from/to (same h_last_hi/h_last_lo as fib_50/fib_618 above,
+// just the un-retraced endpoints). 0% is always the side the retracement is measured FROM (h_last_hi
+// when bullish/cbc, h_last_lo when bearish), 100% is the far side — matching fib_50/fib_618's own
+// cbc ? ... : ... direction convention exactly, so 0/50/61.8/100 all sit consistently along the same
+// swing regardless of direction. Per follow-up ("can you put in the zero and 1 lines for fib").
+float fib_0 = fib_valid ? (cbc ? h_last_hi : h_last_lo) : na
+float fib_100 = fib_valid ? (cbc ? h_last_lo : h_last_hi) : na
 bool cf_f10_fib_touch = fib_valid and low &lt;= fib_zone_top and high &gt;= fib_zone_bot and ltf_bars_since_htf_flip &lt;= confluence_recency_ltf_bars
 bool cf_f10_fib = confluence_use_fib and cf_f10_fib_touch
 int confluence_score = (cf_f1_flip ? 1 : 0) + (cf_f2_htf ? 1 : 0) + (cf_f3_cloud ? 1 : 0) + (cf_f4_level ? 1 : 0) + (cf_f5_zone ? 1 : 0) + (cf_f6_sweep ? 1 : 0) + (cf_f7_structure_break ? 1 : 0) + (cf_f8_volume ? 1 : 0) + (cf_f9_htf_flip ? 1 : 0) + (cf_f10_fib ? 1 : 0)
@@ -4907,30 +4932,76 @@ f_render_confluence_cells() =&gt;
 // never churns box IDs against max_boxes_count.
 f_render_fib_zone_box() =&gt;
     var box fib_zone_bx = na
-    if not show_fib_zone_box or not fib_valid
+    // v4.63: two extra reference lines at the 0%/100% swing endpoints (fib_0/fib_100), each with a
+    // small "0"/"1" text label at the right edge (line.new has no text param, unlike box.new — hence
+    // the separate label objects). Independently toggled (show_fib_01_lines) from the golden-pocket
+    // box above (show_fib_zone_box), per follow-up ("can you put in the zero and 1 lines for fib").
+    // Same var-persisted, update-in-place pattern (no delete+recreate churn) as the box.
+    var line fib_0_ln = na
+    var line fib_100_ln = na
+    var label fib_0_lbl = na
+    var label fib_100_lbl = na
+    if not fib_valid
         box.delete(fib_zone_bx)
         fib_zone_bx := na
+        line.delete(fib_0_ln)
+        fib_0_ln := na
+        line.delete(fib_100_ln)
+        fib_100_ln := na
+        label.delete(fib_0_lbl)
+        fib_0_lbl := na
+        label.delete(fib_100_lbl)
+        fib_100_lbl := na
     else
-        string fib_box_txt_sz = f_table_text_size(status_table_text_size)
         int fib_box_left = math.max(0, bar_index - fib_zone_box_bars)
-        // v4.61: color/text now driven by fib_price_in_zone (plain "is price between the two levels
-        // right now" check) instead of cf_f10_fib_touch, matching the Status table row's same change
-        // — see fib_price_in_zone's own comment above for why this is deliberately not recency-gated.
-        color fib_box_bg = fib_price_in_zone ? color.new(st_bull, 70) : color.new(st_neutral, 85)
-        color fib_box_bd = fib_price_in_zone ? st_bull : st_neutral
-        string fib_box_txt = "Fib " + htf_tf_disp_val + "  " + str.tostring(fib_50, "#.#") + " / " + str.tostring(fib_618, "#.#") + (fib_price_in_zone ? "  IN" : "")
-        if na(fib_zone_bx)
-            fib_zone_bx := box.new(left=fib_box_left, top=fib_zone_top, right=bar_index, bottom=fib_zone_bot, border_color=fib_box_bd, border_width=1, bgcolor=fib_box_bg, extend=extend.none, text=fib_box_txt, text_color=txt_on, text_size=fib_box_txt_sz, text_halign=text.align_center, text_valign=text.align_center)
+        if not show_fib_zone_box
+            box.delete(fib_zone_bx)
+            fib_zone_bx := na
         else
-            box.set_left(fib_zone_bx, fib_box_left)
-            box.set_right(fib_zone_bx, bar_index)
-            box.set_top(fib_zone_bx, fib_zone_top)
-            box.set_bottom(fib_zone_bx, fib_zone_bot)
-            box.set_bgcolor(fib_zone_bx, fib_box_bg)
-            box.set_border_color(fib_zone_bx, fib_box_bd)
-            box.set_text(fib_zone_bx, fib_box_txt)
-            box.set_text_color(fib_zone_bx, txt_on)
-            box.set_text_size(fib_zone_bx, fib_box_txt_sz)
+            string fib_box_txt_sz = f_table_text_size(status_table_text_size)
+            // v4.61: color/text now driven by fib_price_in_zone (plain "is price between the two
+            // levels right now" check) instead of cf_f10_fib_touch, matching the Status table row's
+            // same change — see fib_price_in_zone's own comment above for why this is deliberately
+            // not recency-gated.
+            color fib_box_bg = fib_price_in_zone ? color.new(st_bull, 70) : color.new(st_neutral, 85)
+            color fib_box_bd = fib_price_in_zone ? st_bull : st_neutral
+            string fib_box_txt = "Fib " + htf_tf_disp_val + "  " + str.tostring(fib_50, "#.#") + " / " + str.tostring(fib_618, "#.#") + (fib_price_in_zone ? "  IN" : "")
+            if na(fib_zone_bx)
+                fib_zone_bx := box.new(left=fib_box_left, top=fib_zone_top, right=bar_index, bottom=fib_zone_bot, border_color=fib_box_bd, border_width=1, bgcolor=fib_box_bg, extend=extend.none, text=fib_box_txt, text_color=txt_on, text_size=fib_box_txt_sz, text_halign=text.align_center, text_valign=text.align_center)
+            else
+                box.set_left(fib_zone_bx, fib_box_left)
+                box.set_right(fib_zone_bx, bar_index)
+                box.set_top(fib_zone_bx, fib_zone_top)
+                box.set_bottom(fib_zone_bx, fib_zone_bot)
+                box.set_bgcolor(fib_zone_bx, fib_box_bg)
+                box.set_border_color(fib_zone_bx, fib_box_bd)
+                box.set_text(fib_zone_bx, fib_box_txt)
+                box.set_text_color(fib_zone_bx, txt_on)
+                box.set_text_size(fib_zone_bx, fib_box_txt_sz)
+        if not show_fib_01_lines
+            line.delete(fib_0_ln)
+            fib_0_ln := na
+            line.delete(fib_100_ln)
+            fib_100_ln := na
+            label.delete(fib_0_lbl)
+            fib_0_lbl := na
+            label.delete(fib_100_lbl)
+            fib_100_lbl := na
+        else
+            if na(fib_0_ln)
+                fib_0_ln := line.new(fib_box_left, fib_0, bar_index, fib_0, color=col_fib_01_lines, width=1, style=line.style_dashed, extend=extend.none)
+                fib_0_lbl := label.new(bar_index, fib_0, "0", color=color.new(color.white, 100), textcolor=col_fib_01_lines, style=label.style_label_left, size=size.tiny)
+            else
+                line.set_xy1(fib_0_ln, fib_box_left, fib_0)
+                line.set_xy2(fib_0_ln, bar_index, fib_0)
+                label.set_xy(fib_0_lbl, bar_index, fib_0)
+            if na(fib_100_ln)
+                fib_100_ln := line.new(fib_box_left, fib_100, bar_index, fib_100, color=col_fib_01_lines, width=1, style=line.style_dashed, extend=extend.none)
+                fib_100_lbl := label.new(bar_index, fib_100, "1", color=color.new(color.white, 100), textcolor=col_fib_01_lines, style=label.style_label_left, size=size.tiny)
+            else
+                line.set_xy1(fib_100_ln, fib_box_left, fib_100)
+                line.set_xy2(fib_100_ln, bar_index, fib_100)
+                label.set_xy(fib_100_lbl, bar_index, fib_100)
     true
 
 if barstate.islast

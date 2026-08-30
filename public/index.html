@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_63.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_65.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1766,10 +1766,39 @@
 // beneath that — previously the box's own toggle was combined with the fib_valid check in one
 // condition, which would no longer correctly isolate the two toggles once a second feature shared
 // the same function.
+// 08/30/2026: v4.64 - Two follow-up changes. (1) Split the 0%/100% Fib line's color/style into
+// separate controls per follow-up ("is there a way to change the text color on 0 and 1 fib and line
+// style"): col_fib_01_lines now controls only the line itself; new txt_fib_01_lines controls the "0"/
+// "1" label text color, and new fib_01_line_style (RefLineStyle enum — same reused
+// solid/dashed/dotted pattern as ltf_piv_style/htf_piv_style) controls the line pattern, replacing
+// the previously hardcoded line.style_dashed. (2) Added generic Fair Value Gap detection for both LTF
+// and HTF per follow-up ("add fair value gap for ltf and htf controlled by input checkboxes one for
+// each") — separate from the existing "HTF Flip FVG" feature above (which only ever marks the ONE
+// gap tied to the last CBC flip); this one continuously scans every bar for the classic 3-candle
+// imbalance (candle A vs candle C, skipping B) on both timeframes, independently toggleable
+// (fvg_show_ltf/fvg_show_htf), keeping the last N (default 3 each, fvg_max_count_ltf/
+// fvg_max_count_htf — separate inputs as of v4.65) unfilled gaps per direction per timeframe, and
+// auto-removing a gap's box the instant price fully trades back through
+// it. HTF detection reuses the existing HTF request.security() call, widened with 2 more tuple
+// elements (sig_htf_hi3/sig_htf_lo3 = high[3]/low[3]) rather than a new call, and only fires once per
+// newly closed HTF bar (fvg_htf_new_bar, the same "sig_htf_t_close != last-seen" idiom already used
+// for the Agreement alerts' de-dup). Per-side/per-timeframe state uses `var box[]`/`array.new_box()`
+// (this file's own existing bracket-style typed-array convention — see piv_lines/piv_lbls — not the
+// generic array&lt;box&gt; syntax, which has no precedent here). Two colors (bullish/bearish, shared across
+// both timeframes) plus fvg_htf_box_bars (HTF box's approximate visual width in LTF bars, same
+// "just pick a width" convention as the Fib Zone box, since HTF bar edges don't land at exact LTF bar
+// positions) round out the new "Fair Value Gap" input group. Disclosed to the user: this is the
+// largest single addition this session — a brand-new per-bar detection+array-tracking subsystem, on
+// a file that has hit the CE10117 compile-size ceiling before (fixed in v4.36) — so there's real risk
+// this could push the file back over budget; genuinely can't know without a real compile.
+// 08/30/2026: v4.65 - Split the shared fvg_max_count input into two separate ones per follow-up
+// ("allow to specify in inputs how many fvgs to draw for ltf and htf"): fvg_max_count_ltf and
+// fvg_max_count_htf, each still default 3, each passed to its own f_manage_fvg() calls (LTF bull/bear
+// use fvg_max_count_ltf, HTF bull/bear use fvg_max_count_htf) — no other v4.64 behavior changed.
 // ====================================================================================
 
 //@version=6
-indicator("v4.63-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.65-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -1814,6 +1843,19 @@ brsg_high_mult = input.float(0.85, "High", inline="brsg", group="LTF Signals", m
 brsg_low_mult = input.float(0.35, "Low", inline="brsg", group="LTF Signals", minval = 0.0, maxval = 1.0, step = 0.01, tooltip="Lower line multiplier (fraction of prior")
 show_htf_flip_fvg = input.bool(true, "HTF Flip FVG", inline="htffvg", group="LTF Signals", tooltip="Shades the 3-candle Fair Value Gap formed around the last confirmed HTF CBC flip (candle before it vs. the candle that closed right after it).")
 col_htf_flip_fvg = input.color(color.new(#7e57c2, 70), "", inline="htffvg", group="LTF Signals", tooltip="Fill/line color for the HTF Flip FVG zone.")
+// v4.64: generic Fair Value Gap detection, separate feature from HTF Flip FVG above (which only ever
+// marks the ONE gap tied to the last flip). This one continuously scans every bar for the classic
+// 3-candle imbalance on LTF (this chart's own bars) and HTF (2 more request.security tuple elements
+// added above, no new call) — independently toggleable per timeframe, per follow-up.
+fvg_show_ltf = input.bool(true, "Show LTF Fair Value Gaps", inline="fvg1", group="Fair Value Gap")
+fvg_show_htf = input.bool(true, "Show HTF Fair Value Gaps", inline="fvg1", group="Fair Value Gap")
+fvg_col_bull = input.color(color.new(color.teal, 65), "Bullish", inline="fvg2", group="Fair Value Gap")
+fvg_col_bear = input.color(color.new(color.maroon, 65), "Bearish", inline="fvg2", group="Fair Value Gap")
+// v4.65: split into separate LTF/HTF inputs per follow-up ("allow to specify in inputs how many
+// fvgs to draw for ltf and htf") — was one shared fvg_max_count used by both.
+fvg_max_count_ltf = input.int(3, "Max active LTF gaps (per side)", minval=1, maxval=10, group="Fair Value Gap", tooltip="How many unfilled LTF gaps to keep drawn per direction before the oldest is dropped. A gap is removed automatically the moment price fully trades back through it, regardless of this cap.")
+fvg_max_count_htf = input.int(3, "Max active HTF gaps (per side)", minval=1, maxval=10, group="Fair Value Gap", tooltip="How many unfilled HTF gaps to keep drawn per direction before the oldest is dropped. A gap is removed automatically the moment price fully trades back through it, regardless of this cap.")
+fvg_htf_box_bars = input.int(15, "HTF gap box width (bars)", minval=2, maxval=300, group="Fair Value Gap", tooltip="Visual left-anchor width, in LTF bars, for HTF gap boxes — approximate, the same convention as the Fib Zone box's own width setting, since HTF bar boundaries don't fall at exact LTF bar positions.")
 show_ltf_pivots = input.bool(true, "Pivot", inline="ltfpiv", group="LTF Signals", tooltip=tt_piv_lines)
 ltf_piv_n = input.int(2, "N", minval=1, maxval=20, inline="ltfpiv", group="LTF Signals", tooltip="Bars left and right of a chart bar that")
 col_ltf_piv_res = input.color(color.red, "H", inline="ltfpiv", group="LTF Signals")
@@ -1933,7 +1975,12 @@ confluence_use_fib = input.bool(true, "Include Fib Golden Pocket (50%-61.8%) in 
 show_fib_zone_box = input.bool(true, "Show Fib Zone box on chart", inline="fibbox", group="Confluence Score", tooltip="Draws a small shaded horizontal zone at the 50%-61.8% retracement levels, anchored near the current bar, with the price levels printed as text inside it. Green when price is currently touching the zone (matches the Fib Golden Pocket factor's raw touch state), gray otherwise. Independent of the Fib Zone Status table row and of the Include-in-score toggle above — this is purely a chart visual.")
 fib_zone_box_bars = input.int(20, "width (bars)", minval=2, maxval=300, inline="fibbox", group="Confluence Score", tooltip="How many bars back from the current bar the Fib Zone box spans.")
 show_fib_01_lines = input.bool(true, "Show 0% / 100% Fib lines", inline="fib01", group="Confluence Score", tooltip="Draws two extra reference lines at the 0% and 100% levels — the actual last confirmed HTF swing high/low the 50%-61.8% zone above is measured from, i.e. the full swing range. Same width (bars back) as the Fib Zone box above. Labeled \"0\" and \"1\" at the right edge.")
-col_fib_01_lines = input.color(color.gray, "", inline="fib01", group="Confluence Score")
+col_fib_01_lines = input.color(color.gray, "Line color", inline="fib01", group="Confluence Score")
+// v4.64: split out per follow-up ("is there a way to change the text color on 0 and 1 fib and line
+// style") — col_fib_01_lines above now controls only the line itself; text color and line pattern
+// are separate so they no longer have to match the line's color/style.
+txt_fib_01_lines = input.color(color.gray, "Text color", inline="fib01c", group="Confluence Score")
+fib_01_line_style = input.enum(RefLineStyle.dashed, "Line style", inline="fib01c", group="Confluence Score", tooltip="0%/100% Fib line pattern.")
 // v4.55: replaces the old packed-string row 1/row 2/Info row breakdown — a small dedicated table
 // (separate from the Status table, same pattern as the Pivot Points table below) with one cell per
 // factor so each can carry its own color: green = counted toward the score, amber = the touch
@@ -3542,7 +3589,10 @@ htf_cbc_labels_f = request.security(ticker.standard(syminfo.tickerid), htf_timef
 htf_bars_since_flip = request.security(ticker.standard(syminfo.tickerid), htf_timeframe, f_bars_since_flip(f_cbc_state())[1], lookahead=barmerge.lookahead_off)
 // v4.46: widened this same call with 2 more tuple elements (sig_htf_vol/sig_htf_vol_avg) for the new
 // Volume Spike confluence factor below — no new request.security call, this one already ran every bar.
-[sig_htf_lo, sig_htf_hi, sig_htf_cl, sig_htf_op, sig_htf_t_open, sig_htf_t_close, sig_htf_vol, sig_htf_vol_avg] = request.security(ticker.standard(syminfo.tickerid), htf_timeframe, [low[1], high[1], close[1], open[1], time[1], time_close[1], volume[1], ta.sma(volume, htf_vol_avg_len)[1]], lookahead=barmerge.lookahead_off)
+// v4.64: widened again with sig_htf_hi3/sig_htf_lo3 (high[3]/low[3], the HTF bar 2 bars before the
+// one sig_htf_hi/sig_htf_lo already fetches) for the new generic HTF Fair Value Gap feature below —
+// same "no new request.security call" discipline.
+[sig_htf_lo, sig_htf_hi, sig_htf_cl, sig_htf_op, sig_htf_t_open, sig_htf_t_close, sig_htf_vol, sig_htf_vol_avg, sig_htf_hi3, sig_htf_lo3] = request.security(ticker.standard(syminfo.tickerid), htf_timeframe, [low[1], high[1], close[1], open[1], time[1], time_close[1], volume[1], ta.sma(volume, htf_vol_avg_len)[1], high[3], low[3]], lookahead=barmerge.lookahead_off)
 // Identity of the CURRENT, still-forming HTF bar (its scheduled close time) — used to de-dup the
 // early/unconfirmed alerts so the same still-open HTF bar + same live direction doesn't re-email on
 // every LTF bar. Changes only when a new HTF bar starts forming, unlike sig_htf_t_close (the last
@@ -3623,6 +3673,65 @@ bool htf_fvg_ready = not na(htf_fvg_prev_hi) and not na(htf_fvg_prev_lo) and not
 bool htf_fvg_exists = htf_fvg_ready and (htf_fvg_bull ? htf_fvg_next_lo &gt; htf_fvg_prev_hi : htf_fvg_prev_lo &gt; htf_fvg_next_hi)
 float htf_fvg_top = htf_fvg_exists ? (htf_fvg_bull ? htf_fvg_next_lo : htf_fvg_prev_lo) : na
 float htf_fvg_bot = htf_fvg_exists ? (htf_fvg_bull ? htf_fvg_prev_hi : htf_fvg_next_hi) : na
+// v4.64: generic Fair Value Gap boxes — runs every bar (unlike the barstate.islast-only render
+// functions used for the Status table/Fib Zone/etc.), since each individual gap must be captured and
+// boxed at the historical bar it actually forms on, then persist (extending right) across every
+// later bar until either mitigated or bumped out by the per-side cap. `var box[]`/`array.new_box()`
+// (bracket-style typed arrays) match this file's own existing convention (piv_lines/piv_lbls above
+// use `var line[]`/`array.new_line()`), not the newer generic `array&lt;box&gt;` syntax, which has no
+// precedent in this file. Both loops guard `array.size(boxes) &gt; 0` first — looping `to
+// array.size(boxes) - 1` on an empty array (size 0, so -1) would otherwise run backward through i=0
+// and i=-1 (Pine's for-loop auto-reverses when start &gt; end), and array.get() on an empty array errors.
+f_manage_fvg(bool newGap, float gapTop, float gapBot, int leftBar, bool isBull, color col, int maxCount) =&gt;
+    var box[] boxes = array.new_box(0, na)
+    var float[] tops = array.new_float(0, na)
+    var float[] bots = array.new_float(0, na)
+    // Mitigation: a bull gap is filled once price trades back down through its bottom edge; a bear
+    // gap once price trades back up through its top edge. Checked against the CURRENT bar's real
+    // low/high (not a lagged HTF value), so an HTF-timeframe gap can be marked filled intrabar,
+    // without waiting for that HTF bar to formally close.
+    if array.size(boxes) &gt; 0
+        for i = array.size(boxes) - 1 to 0
+            bool filled = isBull ? low &lt;= array.get(bots, i) : high &gt;= array.get(tops, i)
+            if filled
+                box.delete(array.get(boxes, i))
+                array.remove(boxes, i)
+                array.remove(tops, i)
+                array.remove(bots, i)
+    if array.size(boxes) &gt; 0
+        for i = 0 to array.size(boxes) - 1
+            box.set_right(array.get(boxes, i), bar_index)
+    if newGap
+        box newId = box.new(left=leftBar, top=gapTop, bottom=gapBot, right=bar_index, border_color=col, bgcolor=color.new(col, 30), extend=extend.none)
+        array.push(boxes, newId)
+        array.push(tops, gapTop)
+        array.push(bots, gapBot)
+        if array.size(boxes) &gt; maxCount
+            box.delete(array.shift(boxes))
+            array.shift(tops)
+            array.shift(bots)
+    true
+
+// LTF: classic 3-candle imbalance using this chart's own bars — candle A (2 bars back) vs candle C
+// (current), skipping candle B. Bull: A.high &lt; C.low (gap = high[2] .. low). Bear: A.low &gt; C.high
+// (gap = high .. low[2]).
+if fvg_show_ltf
+    f_manage_fvg(low &gt; high[2], low, high[2], bar_index - 2, true, fvg_col_bull, fvg_max_count_ltf)
+    f_manage_fvg(high &lt; low[2], low[2], high, bar_index - 2, false, fvg_col_bear, fvg_max_count_ltf)
+
+// HTF: same pattern, one HTF bar per "candle" (sig_htf_hi/lo = candle C = the last CLOSED HTF bar;
+// sig_htf_hi3/lo3 = candle A = 2 HTF bars before that). These request.security values stay constant
+// across every LTF bar within the same still-forming HTF bar, so fvg_htf_new_bar (same
+// "sig_htf_t_close != last-seen" idiom already used elsewhere in this file, e.g.
+// last_agree_long_htf_close_t) gates detection to fire exactly once per newly closed HTF bar, not
+// once per LTF bar.
+var int fvg_last_htf_check_t = -1
+bool fvg_htf_new_bar = sig_htf_t_close != fvg_last_htf_check_t
+if fvg_htf_new_bar
+    fvg_last_htf_check_t := sig_htf_t_close
+if fvg_show_htf
+    f_manage_fvg(fvg_htf_new_bar and sig_htf_lo &gt; sig_htf_hi3, sig_htf_lo, sig_htf_hi3, bar_index - fvg_htf_box_bars, true, fvg_col_bull, fvg_max_count_htf)
+    f_manage_fvg(fvg_htf_new_bar and sig_htf_hi &lt; sig_htf_lo3, sig_htf_lo3, sig_htf_hi, bar_index - fvg_htf_box_bars, false, fvg_col_bear, fvg_max_count_htf)
 // v4.41: LTF-bar counter since the HTF flip — distinct from htf_bars_since_flip above (which counts
 // HTF bars via request.security); this one counts plain LTF bars and feeds the "stop after N LTF bars
 // post-flip" alert cutoff below. Resets on the same htf_just_flipped_for_zone trigger used to freeze
@@ -4989,15 +5098,15 @@ f_render_fib_zone_box() =&gt;
             fib_100_lbl := na
         else
             if na(fib_0_ln)
-                fib_0_ln := line.new(fib_box_left, fib_0, bar_index, fib_0, color=col_fib_01_lines, width=1, style=line.style_dashed, extend=extend.none)
-                fib_0_lbl := label.new(bar_index, fib_0, "0", color=color.new(color.white, 100), textcolor=col_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_0_ln := line.new(fib_box_left, fib_0, bar_index, fib_0, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
+                fib_0_lbl := label.new(bar_index, fib_0, "0", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
             else
                 line.set_xy1(fib_0_ln, fib_box_left, fib_0)
                 line.set_xy2(fib_0_ln, bar_index, fib_0)
                 label.set_xy(fib_0_lbl, bar_index, fib_0)
             if na(fib_100_ln)
-                fib_100_ln := line.new(fib_box_left, fib_100, bar_index, fib_100, color=col_fib_01_lines, width=1, style=line.style_dashed, extend=extend.none)
-                fib_100_lbl := label.new(bar_index, fib_100, "1", color=color.new(color.white, 100), textcolor=col_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_100_ln := line.new(fib_box_left, fib_100, bar_index, fib_100, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
+                fib_100_lbl := label.new(bar_index, fib_100, "1", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
             else
                 line.set_xy1(fib_100_ln, fib_box_left, fib_100)
                 line.set_xy2(fib_100_ln, bar_index, fib_100)
@@ -6497,6 +6606,25 @@ if barstate.islast
           confirmed: true,
           url: 'https://www.youtube.com/watch?v=qrxOcGfc7fU',
           thumb: 'https://i.ytimg.com/vi/qrxOcGfc7fU/hqdefault.jpg'
+        }
+      ]
+    },
+    {
+      title: 'Market Structure',
+      videos: [
+        {
+          title: 'How To Understand Market Structure | FOREX | SMC (Part 1)',
+          channel: 'Matt Donlevey - Photon Trading',
+          confirmed: true,
+          url: 'https://www.youtube.com/watch?v=Pd9ASRCHWmQ',
+          thumb: 'https://i.ytimg.com/vi/Pd9ASRCHWmQ/hqdefault.jpg'
+        },
+        {
+          title: "The Last Market Structure Video You'll Ever Need",
+          channel: 'Justin Werlein',
+          confirmed: true,
+          url: 'https://www.youtube.com/watch?v=N_EMes3G2aU',
+          thumb: 'https://i.ytimg.com/vi/N_EMes3G2aU/hqdefault.jpg'
         }
       ]
     }

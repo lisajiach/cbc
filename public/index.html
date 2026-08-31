@@ -467,10 +467,18 @@
     animation: slidein 0.25s ease-out;
   }
   /* Status border colors: A+ Setup alerts get blue, confirmed alerts get green, and
-     early/unconfirmed alerts get yellow — matches how these are eyeballed on the chart. */
+     early/unconfirmed alerts get yellow — matches how these are eyeballed on the chart.
+     status-orb (yellow, same hex as unconfirmed but its own class) is a plain ORB-level alert
+     (Level Proximity touch on ORB High/Low, or the Opening-Range breakout) — per follow-up
+     ("change to yellow border for orb alerts"). Deliberately separate from the ORB Retest
+     feature's own Flip/Fail-from/Pass outcomes, which keep their existing fail/stall/confirmed
+     (red/amber/green) scheme untouched. status-confluence is the "High Confluence Setup" alert —
+     first set to yellow, then changed to blue (same hex as status-aplus) per follow-up. */
   .card.status-aplus { border: 2px solid #22d3ee; }
   .card.status-confirmed { border: 2px solid #22c55e; }
   .card.status-unconfirmed { border: 2px solid #fde047; }
+  .card.status-orb { border: 2px solid #fde047; }
+  .card.status-confluence { border: 2px solid #22d3ee; }
   .card.status-fail { border: 2px solid #ef4444; }
   .card.status-stall { border: 2px solid #ff9800; }
   @keyframes slidein {
@@ -725,6 +733,9 @@
   body.plain-mode .field.asian .v {
     color: var(--text) !important;
   }
+  body.plain-mode .confluence-field-included {
+    border-color: var(--panel-border) !important;
+  }
   body.plain-mode .hl-bull,
   body.plain-mode .hl-bear {
     color: inherit !important;
@@ -739,6 +750,8 @@
   body.plain-mode .card.status-aplus,
   body.plain-mode .card.status-confirmed,
   body.plain-mode .card.status-unconfirmed,
+  body.plain-mode .card.status-orb,
+  body.plain-mode .card.status-confluence,
   body.plain-mode .card.status-fail,
   body.plain-mode .card.status-stall {
     border-color: var(--panel-border) !important;
@@ -836,6 +849,11 @@
   .field.bear { background: rgba(239,68,68,0.28); }
   .field.bear .v { color: #fecaca; }
   .field.neutral { background: #0e1219; }
+  /* Confluence Factors grid (buildConfluenceFactorsHtml): counted (✓) cells get an orange border,
+     per follow-up ("whatever is included in the table for confluence...should have an orange
+     border"). Scoped to .confluence-field so it only affects this grid, not every other .field.bull
+     badge in the app (CBC/EMA/etc.) which keep their plain green background with no border. */
+  .confluence-field.confluence-field-included { border: 2px solid #ff9800; }
   .field.ny { background: #ff9800; }
   .field.ny .v { color: #3d1e00; }
   .field.london { background: #9c27b0; }
@@ -1153,7 +1171,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_68.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_74.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1841,10 +1859,97 @@
 // which gets its own real frame — but Pine's 9 fixed table positions can't guarantee pixel-perfect
 // adjacency to the main table) rather than guessing at an implementation, especially with the file
 // already having hit the CE10117 token ceiling once this session (v4.66).
+// 08/30/2026: v4.69 - Two follow-ups on the Confluence Factors cells table, per an annotated
+// screenshot of the live indicator. (1) Added a leading "S:count/max" Score cell at the very front of
+// the table (index 0, before HTF), reusing confluence_score/confluence_max_score/
+// confluence_alert_threshold and the same green/gray coloring rule already used by the Status table's
+// own Confluence Score row — per follow-up ("where is the confluence score at the beginning"). The
+// table is now 11 cells total (was 10); confluence_cells_rows' maxval bumped 10-&gt;11 and its tooltip
+// updated to match. (2) The HTF/Cloud/Level/Zone group (the "four" from two follow-ups ago) is now
+// bracketed with "[" prepended to the HTF cell's text and "]" appended to the Zone cell's text — a
+// text-based visual approximation of a border, since (as disclosed in the v4.68 entry above and again
+// in-chat) Pine's table API genuinely cannot draw a border, outline, or distinct color around an
+// arbitrary subset of cells: border_width/border_color are uniform across every internal gridline of
+// the whole table, and frame_width/frame_color only wrap the table's own outer edge. A real border
+// would need a second, separate table (whose own frame IS a real border), but Pine's 9 fixed table
+// anchor positions can't place a second table pixel-adjacent to this one — at the same corner they'd
+// overlap instead of sitting side by side. Went with the bracket approximation rather than asking a
+// third time, since the request had already been made twice; open to switching to the two-table
+// approach (accepting the positioning risk) or a different visual (e.g. a shared background tint)
+// if the brackets don't read well once compiled. Only cosmetic/display changes — no signal logic
+// touched, confluence_score's own value and cf_f1.._f10 identifiers unchanged.
+// 08/30/2026: v4.70 - Follow-up ("change xHF to xHFV"): the Confluence Factors cells table's factor
+// #9 abbreviation changed from "HF" to "HFV". Purely a text-literal change in the conf_texts array.from(...)
+// call in f_render_confluence_cells() — no logic, tooltip, or scoring change.
+// 08/31/2026: v4.71 - Follow-up: Flip (LTF), confluence factor #1, is now its own include/exclude
+// toggle (confluence_use_flip), OFF BY DEFAULT per the request ("can we have an input so it can be
+// included or excluded from the confluence score - default is off"). This is a real behavior change:
+// out of the box the Confluence Score no longer counts Flip(LTF) at all, and confluence_max_score
+// defaults to 9 (was 10) until the toggle is switched on. Implementation mirrors the existing
+// Structure/Volume/HTFFlip/Fib pattern exactly: cf_f1_flip_touch is the raw signal (renamed from the
+// old always-on cf_f1_flip), cf_f1_flip = confluence_use_flip and cf_f1_flip_touch is what actually
+// counts. confluence_max_score's base dropped from 6 to 5 (the now-permanently-always-on factors are
+// just HTF/Cloud/Level/Zone/Sweep) with a new "+ (confluence_use_flip ? 1 : 0)" term added alongside
+// the other 4 toggle terms. The alert-text breakdown (cf_core_reasons_str) now splices in a new
+// cf_f1_reasons_part string that goes empty when the toggle is off — same "conditionally-empty
+// appended piece" pattern as cf_f7/8/9/10_reasons_part — so a disabled Flip cleanly disappears from
+// the alert text instead of showing "✗Flip(3)" forever. The Confluence Factors cells table's Flip
+// cell now uses the same 3-way green/amber/gray rule as every other toggleable factor (amber = the
+// LTF did flip, but the toggle is currently off) instead of the old always green-or-gray. The app's
+// own confluence grid (buildConfluenceFactorsHtml in the dashboard) needed NO change — it parses
+// whatever ✓/✗ tokens are actually present in the alert text, so it already picks up a missing Flip
+// segment and the new denominator automatically.
+// 08/31/2026: v4.72 - Two follow-ups. (1) "same for key level confluence" — Level (factor #4) gets
+// the exact same include/exclude treatment as Flip (LTF) just got in v4.71: a new confluence_use_level
+// toggle, OFF BY DEFAULT. cf_f4_level_touch is the raw signal (renamed from the old always-on
+// cf_f4_level), cf_f4_level = confluence_use_level and cf_f4_level_touch is what counts.
+// confluence_max_score's base drops from 5 to 4 (the now-permanently-always-on factors are just HTF/
+// Cloud/Zone/Sweep) with a new "+ (confluence_use_level ? 1 : 0)" term. The alert-text breakdown gets
+// a new cf_f4_reasons_part (same conditionally-empty pattern as cf_f1_reasons_part) so an excluded
+// Level cleanly disappears from the text instead of always showing "✗Level". The Confluence Factors
+// cells table's Level cell now uses the same green/amber/gray rule as every other toggleable factor.
+// Out of the box, BOTH Flip and Level are now excluded — confluence_max_score defaults to 8/8 (was
+// 10/10 before v4.71). (2) Alert threshold (confluence_alert_threshold) default changed from 4 to 3,
+// per follow-up — existing charts that already have this input saved keep their own saved value;
+// only fresh applications of the indicator (or an explicit "reset settings") pick up the new 3.
+// 08/31/2026: v4.73 - Follow-up with a screenshot of the compiled v4.72 settings panel ("set default
+// as in image for what to include in confluence score") — changed the DEFAULT (not the current value
+// of any input already on a chart) of 3 more toggleable Confluence Score factors to match exactly
+// what the screenshot showed checked/unchecked: confluence_use_structure_break true-&gt;false,
+// confluence_use_volume true-&gt;false, confluence_use_fib true-&gt;false. confluence_use_htf_flip stays
+// true (already checked in the screenshot) and confluence_use_flip/confluence_use_level stay false
+// (already unchecked, set in v4.71/v4.72). Net effect: out of the box, only HTF Flip Recency is now
+// an "on" toggleable factor — combined with the 4 always-on core factors (HTF/Cloud/Zone/Sweep), a
+// fresh application of this indicator now defaults to a 5-factor Confluence Score
+// (confluence_max_score = 5 out of the box) against the alert threshold of 3 set in v4.72. Every
+// factor can still be switched back on individually — this only changes what a brand-new chart
+// starts with, exactly as confirmed by the screenshot; it does not touch any input already saved on
+// an existing chart (same caveat as the v4.72 threshold-default change).
+// 08/31/2026: v4.74 - Two follow-ups. (1) confluence_use_htf_flip default changed true-&gt;false, per
+// follow-up ("by default off HTF Flip Recency") — this was the last toggleable factor still on by
+// default, so out of the box ALL 6 toggleable factors (Flip, Level, Structure, Volume, HTFFlip, Fib)
+// are now off, and confluence_max_score defaults to 4 (just the always-on core: HTF/Cloud/Zone/
+// Sweep) against the alert threshold of 3 set in v4.72 — meaning a fresh chart's alert now fires on
+// 3 of 4 core factors agreeing, before any optional factor is switched back on. (2) Full reorder of
+// the Confluence Score display per an explicit new sequence: core 4 (HTF/Cloud/Zone/Sweep) stays as
+// the lead, followed by the toggleable tail in this exact order: Volume, Fib, Structure, Level,
+// Flip(LTF), HTFFlip — notably moving Level OUT of its old spot between Cloud and Zone (where it had
+// stayed since v4.42 even after becoming toggleable in v4.72) and Flip(LTF) OUT of its slot before
+// Sweep, down into the toggleable tail alongside the other 4 optional factors, since all 6 are now
+// equally off-by-default toggles. Applied consistently to both display surfaces: the alert-text
+// breakdown (cf_core_reasons_str trimmed to just the 4 core factors; cf_f1_reasons_part and
+// cf_f4_reasons_part switched to the same "leading  , no trailing space" format as
+// Structure/Volume/HTFFlip/Fib so all 6 toggleable segments can be freely reordered in
+// cf_extended_reasons_str) and the Confluence Factors cells table (conf_texts/conf_colors/conf_tips
+// reordered to match). The "[" "]" bracket markers moved WITH the core group — they now wrap HTF
+// through Sweep (cells 0-3) instead of the old HTF/Cloud/Level/Zone grouping, since Level is no
+// longer adjacent to the other 3. Flagged to the user in-chat in case that's not the bracket
+// placement wanted now that Level has moved. confluence_score's own sum and confluence_max_score's
+// formula are both order-independent and unaffected — this is a pure display-order + defaults change.
 // ====================================================================================
 
 //@version=6
-indicator("v4.68-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.74-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -2011,15 +2116,17 @@ alert_show_structure = input.bool(true, "Include Market Structure (HH/LL) in ema
 // v3.75 addition: Confluence Score (Chop Detection and Scaling Alerts were cut in the
 // token-trimming pass — the base script was already near Pine's CE10117 ceiling)
 // ===========================
-confluence_alert_threshold = input.int(4, "Alert threshold (score ≥)", minval=1, maxval=9, group="Confluence Score")
+confluence_alert_threshold = input.int(3, "Alert threshold (score ≥)", minval=1, maxval=9, group="Confluence Score")
 alert_on_confluence = input.bool(true, "Alert: High Confluence Setup", group="Confluence Score", tooltip="Fires once when score newly reaches the threshold.")
 confluence_recency_ltf_bars = input.int(10, "Zone/Sweep Factors: Valid Within N LTF Bars of HTF Flip", minval=1, group="Confluence Score", tooltip="The Zone (BRSG/FVG) and Liquidity Sweep factors below only count while this many LTF bars or fewer have passed since the HTF flip they're anchored to — keeps a stale, long-past zone/sweep from still contributing to the score.")
-confluence_use_structure_break = input.bool(true, "Include HTF Structure Break (BOS/CHoCH) in score", group="Confluence Score", tooltip="When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops back to /6.")
-confluence_use_volume = input.bool(true, "Include HTF Flip Volume Spike in score", group="Confluence Score", tooltip="When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops by 1.")
+confluence_use_flip = input.bool(false, "Include Flip (LTF) in score", group="Confluence Score", tooltip="Off by default, per follow-up. When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops by 1.")
+confluence_use_level = input.bool(false, "Include Level in score", group="Confluence Score", tooltip="Off by default, per follow-up (same treatment as Flip (LTF) above). When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops by 1.")
+confluence_use_structure_break = input.bool(false, "Include HTF Structure Break (BOS/CHoCH) in score", group="Confluence Score", tooltip="Off by default, per follow-up. When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops back to /4.")
+confluence_use_volume = input.bool(false, "Include HTF Flip Volume Spike in score", group="Confluence Score", tooltip="Off by default, per follow-up. When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops by 1.")
 confluence_vol_mult = input.float(1.5, "Volume Spike: Flip Candle Volume ≥ N × Average", minval=1.0, step=0.1, group="Confluence Score", tooltip="How many times the HTF flip candle's own volume must exceed its trailing average (below) to count as a genuine volume spike — real participation, not a low-volume drift-through flip.")
 htf_vol_avg_len = input.int(20, "Volume Spike: HTF Bars for Average", minval=2, group="Confluence Score", tooltip="How many prior HTF bars feed the trailing average volume used for the spike comparison above.")
-confluence_use_htf_flip = input.bool(true, "Include HTF Flip Recency in score", group="Confluence Score", tooltip="A separate factor from Flip(LTF) above — true while the current HTF flip's own Fair Value Gap remains unfilled, false the instant price trades back into it, true again on the next flip's fresh gap. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown.")
-confluence_use_fib = input.bool(true, "Include Fib Golden Pocket (50%-61.8%) in score", group="Confluence Score", tooltip="10th confluence factor — price wicks into the 50%-61.8% retracement zone of the last confirmed HTF swing (same swing used by Liquidity Sweep), within the same recency window as Zone/Sweep/Structure/Volume above. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown. Also shown as its own always-visible Status table row regardless of this toggle.")
+confluence_use_htf_flip = input.bool(false, "Include HTF Flip Recency in score", group="Confluence Score", tooltip="Off by default, per follow-up. A separate factor from Flip(LTF) above — true while the current HTF flip's own Fair Value Gap remains unfilled, false the instant price trades back into it, true again on the next flip's fresh gap. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown.")
+confluence_use_fib = input.bool(false, "Include Fib Golden Pocket (50%-61.8%) in score", group="Confluence Score", tooltip="Off by default, per follow-up. 10th confluence factor — price wicks into the 50%-61.8% retracement zone of the last confirmed HTF swing (same swing used by Liquidity Sweep), within the same recency window as Zone/Sweep/Structure/Volume above. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown. Also shown as its own always-visible Status table row regardless of this toggle.")
 show_fib_zone_box = input.bool(true, "Show Fib Zone box on chart", inline="fibbox", group="Confluence Score", tooltip="Draws a small shaded horizontal zone at the 50%-61.8% retracement levels, anchored near the current bar, with the price levels printed as text inside it. Green when price is currently touching the zone (matches the Fib Golden Pocket factor's raw touch state), gray otherwise. Independent of the Fib Zone Status table row and of the Include-in-score toggle above — this is purely a chart visual.")
 fib_zone_box_bars = input.int(20, "width (bars)", minval=2, maxval=300, inline="fibbox", group="Confluence Score", tooltip="How many bars back from the current bar the Fib Zone box spans.")
 show_fib_01_lines = input.bool(true, "Show 0% / 100% Fib lines", inline="fib01", group="Confluence Score", tooltip="Draws two extra reference lines at the 0% and 100% levels — the actual last confirmed HTF swing high/low the 50%-61.8% zone above is measured from, i.e. the full swing range. Same width (bars back) as the Fib Zone box above. Labeled \"0\" and \"1\" at the right edge.")
@@ -2034,9 +2141,9 @@ fib_01_line_style = input.enum(RefLineStyle.dashed, "Line style", inline="fib01c
 // factor so each can carry its own color: green = counted toward the score, amber = the touch
 // condition is true right now but excluded (outside the recency window, or its toggle is off), gray =
 // not true. Replaces the Info row's job with color instead of a whole extra row.
-confluence_use_cells_table = input.bool(true, "Show Confluence Factors table (color-coded cells)", group="Confluence Score", tooltip="A small dedicated table, separate from the Status table, with one colored cell per confluence factor (all 10). Green = counted toward the score right now. Amber = the underlying condition is true but excluded — a recency window or its own include/exclude toggle is currently zeroing it out. Gray = not true at all.")
+confluence_use_cells_table = input.bool(true, "Show Confluence Factors table (color-coded cells)", group="Confluence Score", tooltip="A small dedicated table, separate from the Status table, with a leading live Score cell (counted/max) followed by one colored cell per confluence factor (all 10) — 11 cells total, ordered HTF/Cloud/Zone/Sweep, then Volume/Fib/Structure/Level/Flip(LTF)/HTFFlip. Factor cells: Green = counted toward the score right now. Amber = the underlying condition is true but excluded — a recency window or its own include/exclude toggle is currently zeroing it out. Gray = not true at all. The HTF/Cloud/Zone/Sweep group right after the Score cell is bracketed with [ ] text markers, since Pine's table API has no way to draw an actual border around a subset of cells.")
 confluence_cells_position = input.string("Bottom right", "Confluence Factors Table Position", options=["Top left", "Top center", "Top right", "Middle left", "Middle center", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group="Confluence Score")
-confluence_cells_rows = input.int(1, "Confluence Factors Table Rows", minval=1, maxval=10, group="Confluence Score", tooltip="How many rows to spread the 10 confluence factor cells across — columns adjust automatically (about 10/rows per row, factors fill left-to-right then wrap). 1 (default) = a single wide row of all 10 cells. Higher values make the table narrower but taller.")
+confluence_cells_rows = input.int(1, "Confluence Factors Table Rows", minval=1, maxval=11, group="Confluence Score", tooltip="How many rows to spread the 11 cells (Score + 10 factors) across — columns adjust automatically (about 11/rows per row, cells fill left-to-right then wrap). 1 (default) = a single wide row. Higher values make the table narrower but taller. Note: the [ ] bracket around HTF/Cloud/Level/Zone only reads correctly at the default 1 row — at higher row counts that group may wrap onto separate rows.")
 
 alert_on_vwap_bounce = input.bool(true, "Alert: VWAP Bounce - High R:R (Long/Short)", group="Alerts", tooltip="CBC flip at VWAP, clear of the nearest major support/resistance.")
 alert_on_ema20_touch = input.bool(true, "Alert: EMA20 Touch - Pullback Entry (LTF/HTF)", group="Alerts", tooltip="Regressive EMA20 touch while CBC confirms the trend. LTF: max 3 per confirmed HTF flip, 3-bar cooldown between. HTF: at least 1 full bar between alerts.")
@@ -4296,10 +4403,19 @@ if htf_flip_bull or htf_flip_bear
 // ltf_bars_since_htf_flip added in v4.41 for the FVG alert cutoff) so a stale, long-past zone/sweep
 // can't keep contributing to the score indefinitely.
 // ===========================
-bool cf_f1_flip = ltf_has_flipped
+// v4.71: Flip (LTF) is now toggleable per follow-up ("can we have an input so it can be included or
+// excluded from the confluence score - default is off"), matching the same touch/gated pattern as
+// Structure/Volume/HTFFlip/Fib below — cf_f1_flip_touch is the raw signal, cf_f1_flip is what
+// actually counts toward the score. Off by default (confluence_use_flip), unlike those 4 which
+// default on — per the explicit request.
+bool cf_f1_flip_touch = ltf_has_flipped
+bool cf_f1_flip = confluence_use_flip and cf_f1_flip_touch
 bool cf_f2_htf = (cbc and not na(htf_cbc_labels_f) and htf_cbc_labels_f == 1.0) or ((not cbc) and not na(htf_cbc_labels_f) and htf_cbc_labels_f == 0.0)
 bool cf_f3_cloud = (cbc and ema_bullish) or ((not cbc) and not ema_bullish)
-bool cf_f4_level = level_bullet != ""
+// v4.72: Level (factor #4) is now toggleable too, per follow-up ("same for key level confluence"),
+// mirroring Flip (LTF)'s v4.71 treatment exactly — off by default.
+bool cf_f4_level_touch = level_bullet != ""
+bool cf_f4_level = confluence_use_level and cf_f4_level_touch
 bool cf_f5_zone_touch = (not na(brsg_zone_top) and not na(htf_last_flip_t) and htf_last_flip_bull == cbc and low &lt;= math.max(brsg_zone_top, brsg_zone_bot) and high &gt;= math.min(brsg_zone_top, brsg_zone_bot)) or (htf_fvg_exists and close &lt;= htf_fvg_top and close &gt;= htf_fvg_bot and htf_fvg_bull == cbc)
 bool cf_f5_zone = cf_f5_zone_touch and ltf_bars_since_htf_flip &lt;= confluence_recency_ltf_bars
 // Liquidity Sweep: price wicks past the last confirmed HTF swing low/high (h_last_lo/h_last_hi,
@@ -4369,19 +4485,26 @@ int confluence_score = (cf_f1_flip ? 1 : 0) + (cf_f2_htf ? 1 : 0) + (cf_f3_cloud
 // 254-external-element budget and pushed it over (CE10116). A plain precomputed string avoids that.
 // v4.43: the Structure Break segment only appears when confluence_use_structure_break is on — kept
 // as one appended, conditionally-empty string rather than restructuring the rest of the line.
+// v4.74: reordered per follow-up (explicit new order: HTF/Cloud/Zone/Sweep unchanged as the core 4,
+// then Volume/Fib/Structure/Level/Flip(LTF)/HTFFlip as the toggleable tail, in that exact sequence).
+// Level and Flip's _reasons_part strings are now "leading-space" style (a leading "  " and no
+// trailing space) to match Structure/Volume/HTFFlip/Fib's own format, since all 6 toggleable factors
+// are now equally part of the appended tail rather than 2 of them being spliced inside the core
+// string — every _reasons_part below can now be listed and reordered freely without touching
+// cf_core_reasons_str itself.
+string cf_f1_reasons_part = not confluence_use_flip ? "" : "  " + (cf_f1_flip ? "✓" : "✗") + "Flip(" + str.tostring(timeframe.multiplier) + ")"
+string cf_f4_reasons_part = not confluence_use_level ? "" : "  " + (cf_f4_level ? "✓" : "✗") + "Level"
 string cf_f7_reasons_part = not confluence_use_structure_break ? "" : "  " + (cf_f7_structure_break ? "✓" : "✗") + "Structure"
 string cf_f8_reasons_part = not confluence_use_volume ? "" : "  " + (cf_f8_volume ? "✓" : "✗") + "Volume"
 string cf_f9_reasons_part = not confluence_use_htf_flip ? "" : "  " + (cf_f9_htf_flip ? "✓" : "✗") + "HTFFlip"
 string cf_f10_reasons_part = not confluence_use_fib ? "" : "  " + (cf_f10_fib ? "✓" : "✗") + "Fib"
-// v4.50: split into "core" (the original 6, never toggled off) and "extended" (the 4 optional
-// toggleable ones) pieces, reassembled into confluence_reasons_str below — the full-name alert
-// breakdown used by a_status_msg. (v4.55: these two pieces used to also feed an abbreviated Status
-// table display; that display is gone now, replaced by the Confluence Factors cells table below.)
-// v4.68: reordered per follow-up ("2,3,4,5 should be first in the score") — HTF/Cloud/Level/Zone
-// (factors 2-5) now lead, followed by Flip(LTF) and Sweep. Display order only; confluence_score's own
-// sum is unaffected (addition is order-independent) and the cf_f1.._f10 identifiers are unchanged.
-string cf_core_reasons_str = (cf_f2_htf ? "✓" : "✗") + "HTF(" + htf_timeframe + ")  " + (cf_f3_cloud ? "✓" : "✗") + "Cloud  " + (cf_f4_level ? "✓" : "✗") + "Level  " + (cf_f5_zone ? "✓" : "✗") + "Zone  " + (cf_f1_flip ? "✓" : "✗") + "Flip(" + str.tostring(timeframe.multiplier) + ")  " + (cf_f6_sweep ? "✓" : "✗") + "Sweep"
-string cf_extended_reasons_str = cf_f7_reasons_part + cf_f8_reasons_part + cf_f9_reasons_part + cf_f10_reasons_part
+// v4.50: split into "core" (the always-on factors) and "extended" (the toggleable ones) pieces,
+// reassembled into confluence_reasons_str below — the full-name alert breakdown used by a_status_msg.
+// v4.74: core is now exactly HTF/Cloud/Zone/Sweep (Level and Flip(LTF) moved into the extended tail
+// below, since both became toggleable in v4.71/v4.72); extended order is Volume, Fib, Structure,
+// Level, Flip(LTF), HTFFlip.
+string cf_core_reasons_str = (cf_f2_htf ? "✓" : "✗") + "HTF(" + htf_timeframe + ")  " + (cf_f3_cloud ? "✓" : "✗") + "Cloud  " + (cf_f5_zone ? "✓" : "✗") + "Zone  " + (cf_f6_sweep ? "✓" : "✗") + "Sweep"
+string cf_extended_reasons_str = cf_f8_reasons_part + cf_f10_reasons_part + cf_f7_reasons_part + cf_f4_reasons_part + cf_f1_reasons_part + cf_f9_reasons_part
 string confluence_reasons_str = cf_core_reasons_str + cf_extended_reasons_str
 // v4.52: info-only diagnostic — the raw, ungated "_touch" state of the 5 factors that have something
 // currently able to zero them out of the actual score. v4.55: this table-only breakdown text (and the
@@ -4391,7 +4514,7 @@ string confluence_reasons_str = cf_core_reasons_str + cf_extended_reasons_str
 // text, so a separate Info row (or an abbreviated table string) is no longer needed. The alert-facing
 // confluence_reasons_str (full factor names, used in a_status_msg) is untouched — this cleanup only
 // removed the now-unused table-display strings.
-int confluence_max_score = 6 + (confluence_use_structure_break ? 1 : 0) + (confluence_use_volume ? 1 : 0) + (confluence_use_htf_flip ? 1 : 0) + (confluence_use_fib ? 1 : 0)
+int confluence_max_score = 4 + (confluence_use_flip ? 1 : 0) + (confluence_use_level ? 1 : 0) + (confluence_use_structure_break ? 1 : 0) + (confluence_use_volume ? 1 : 0) + (confluence_use_htf_flip ? 1 : 0) + (confluence_use_fib ? 1 : 0)
 bool confluence_high_new = confluence_score &gt;= confluence_alert_threshold and confluence_score[1] &lt; confluence_alert_threshold
 // v3.75: pre-combine this alert's toggle with its trigger condition OUT HERE, so f_fire_alerts()
 // below only has to reference one plain bool instead of the raw input.bool() toggle —
@@ -5038,14 +5161,27 @@ f_render_pivot_table() =&gt;
     true
 
 // v4.55: Confluence Factors cells table — dedicated small table (same pattern as the Pivot Points
-// table above), one cell per confluence factor so each can carry its own color. Row 0 holds the 6
-// "core" factors (v4.68 order: HTF/Cloud/Level/Zone/Flip/Sweep — always in play, never toggled off).
-// Row 1 holds the 4 "extended" toggleable factors (Structure/Volume/HTFFlip/Fib). Color rule, uniform across all
-// 10 cells: counted (contributes to confluence_score right now) = green; not counted but its raw touch
+// table above), one cell per confluence factor so each can carry its own color. v4.74 order: HTF/
+// Cloud/Zone/Sweep/Volume/Fib/Structure/Level/Flip(LTF)/HTFFlip. Color rule, uniform across all 10 factor
+// cells: counted (contributes to confluence_score right now) = green; not counted but its raw touch
 // condition IS true (excluded only by a recency window or its own include/exclude toggle) = amber;
 // otherwise = gray. Reuses every cf_f*/cf_f*_touch boolean already computed above — no new signal
 // logic, just a different display of existing values. Replaces the old packed-string row 1/row 2/Info
 // row entirely.
+// v4.69: two follow-ups. (1) Added a leading Score cell ("S:count/max", same text/color rule as the
+// Status table's own Confluence Score row) at the very front, per follow-up ("where is the confluence
+// score at the beginning") — the table is now 11 cells, not 10. (2) The HTF/Cloud/Level/Zone group
+// (the four requested for a border) is bracketed with literal "[" / "]" text markers on the first and
+// last cell of that group, per follow-up with an annotated screenshot circling them. This is a text-
+// based visual approximation, not a real border: Pine's table API (table.new/table.cell) has no way to
+// draw a border, outline, or distinct gridline color around an arbitrary subset of cells — border_
+// width/border_color draw uniform lines between EVERY cell in the whole table, and frame_width/frame_
+// color only wrap the table's own outer edge. A real border would require a second, separate table
+// (its own frame IS a real border) — but Pine tables only snap to 9 fixed screen positions, so a
+// second table can't be guaranteed to sit pixel-adjacent to this one without a gap or overlap, and at
+// the same corner position two tables actually overlap each other rather than sitting side by side.
+// The bracket text is the safest working approximation; happy to try the two-table approach instead
+// if the brackets don't read well on the chart.
 f_render_confluence_cells() =&gt;
     var table conf_tbl = na
     var string conf_pos_last = ""
@@ -5056,8 +5192,8 @@ f_render_confluence_cells() =&gt;
         conf_pos_last := ""
         conf_rows_last := 0
     else
-        int conf_rows = math.min(10, math.max(1, confluence_cells_rows))
-        int conf_cols = int(math.ceil(10.0 / conf_rows))
+        int conf_rows = math.min(11, math.max(1, confluence_cells_rows))
+        int conf_cols = int(math.ceil(11.0 / conf_rows))
         // v4.58: re-create (delete + rebuild) whenever position or the row count changes, same
         // pattern f_render_status_table() already uses for its own position/collapsed/field-set
         // changes — a table's column/row COUNT is fixed at table.new() time and won't auto-resize.
@@ -5081,14 +5217,25 @@ f_render_confluence_cells() =&gt;
         // filling left-to-right then wrapping (row = i / conf_cols, col = i % conf_cols). Same
         // ✓/✗ text and green/amber/gray color rule as before — no signal-logic change, just a display
         // reflow.
-        // v4.68: reordered per follow-up ("2,3,4,5 should be first in the score") — HTF/Cloud/Level/
-        // Zone (factors 2-5) now occupy cells 0-3, followed by Flip(LTF), Sweep, Structure, Volume,
-        // HTFFlip, Fib. Display order only — no change to cf_f1.._f10 identifiers or scoring.
-        array&lt;string&gt; conf_texts = array.from((cf_f2_htf ? "✓" : "✗") + "H" + htf_timeframe, (cf_f3_cloud ? "✓" : "✗") + "Cld", (cf_f4_level ? "✓" : "✗") + "Lvl", (cf_f5_zone ? "✓" : "✗") + "Zn", (cf_f1_flip ? "✓" : "✗") + "Flp" + str.tostring(timeframe.multiplier), (cf_f6_sweep ? "✓" : "✗") + "Swp", (cf_f7_structure_break ? "✓" : "✗") + "Str", (cf_f8_volume ? "✓" : "✗") + "Vol", (cf_f9_htf_flip ? "✓" : "✗") + "HF", (cf_f10_fib ? "✓" : "✗") + "Fib")
-        array&lt;color&gt; conf_colors = array.from(cf_f2_htf ? st_bull : st_neutral, cf_f3_cloud ? st_bull : st_neutral, cf_f4_level ? st_bull : st_neutral, cf_f5_zone ? st_bull : (cf_f5_zone_touch ? st_amber : st_neutral), cf_f1_flip ? st_bull : st_neutral, cf_f6_sweep ? st_bull : (cf_f6_sweep_touch ? st_amber : st_neutral), cf_f7_structure_break ? st_bull : (cf_f7_structure_touch ? st_amber : st_neutral), cf_f8_volume ? st_bull : (cf_f8_volume_touch ? st_amber : st_neutral), cf_f9_htf_flip ? st_bull : (cf_f9_htf_flip_touch ? st_amber : st_neutral), cf_f10_fib ? st_bull : (cf_f10_fib_touch ? st_amber : st_neutral))
-        array&lt;string&gt; conf_tips = array.from("HTF — the HTF CBC direction agrees with the current LTF direction.", "Cloud — the LTF EMA9/20 cloud agrees with the current direction.", "Level — price is currently near a key level.", "Zone — BRSG zone or HTF Flip FVG touch. Amber = touched, but outside the recency window.", "Flip (LTF) — valid from the LTF's own flip until the next reverse flip.", "Sweep — liquidity sweep of the last confirmed HTF swing. Amber = touched, but outside the recency window.", "Structure Break (BOS/CHoCH). Amber = touched, but its toggle is off.", "Volume Spike on the HTF flip candle. Amber = touched, but its toggle is off.", "HTF Flip FVG — true while the current flip's Fair Value Gap remains unfilled; invalidated the instant price trades back into it. Amber = true, but its toggle is off.", "Fib Golden Pocket (50%-61.8%) touch. Amber = touched, but outside the recency window or its toggle is off.")
-        for i = 0 to 9
-            table.cell(conf_tbl, i % conf_cols, i / conf_cols, array.get(conf_texts, i), bgcolor=array.get(conf_colors, i), text_color=txt_on, text_size=conf_txt_sz, text_halign=text.align_center, tooltip=array.get(conf_tips, i))
+        // v4.74: reordered again per explicit follow-up — core 4 (HTF/Cloud/Zone/Sweep, cells 0-3)
+        // unchanged, followed by the toggleable tail in this exact requested order: Volume, Fib,
+        // Structure, Level, Flip(LTF), HTFFlip (cells 4-9). The "[" "]" bracket markers moved with the
+        // core group — they now wrap HTF..Sweep (the new cells 0-3) instead of the old HTF/Cloud/
+        // Level/Zone grouping, since Level is no longer adjacent to HTF/Cloud/Zone. Flagged to the
+        // user: shout if this isn't the bracket placement you wanted now that Level moved.
+        array&lt;string&gt; conf_texts = array.from("[" + (cf_f2_htf ? "✓" : "✗") + "H" + htf_timeframe, (cf_f3_cloud ? "✓" : "✗") + "Cld", (cf_f5_zone ? "✓" : "✗") + "Zn", (cf_f6_sweep ? "✓" : "✗") + "Swp" + "]", (cf_f8_volume ? "✓" : "✗") + "Vol", (cf_f10_fib ? "✓" : "✗") + "Fib", (cf_f7_structure_break ? "✓" : "✗") + "Str", (cf_f4_level ? "✓" : "✗") + "Lvl", (cf_f1_flip ? "✓" : "✗") + "Flp" + str.tostring(timeframe.multiplier), (cf_f9_htf_flip ? "✓" : "✗") + "HFV")
+        array&lt;color&gt; conf_colors = array.from(cf_f2_htf ? st_bull : st_neutral, cf_f3_cloud ? st_bull : st_neutral, cf_f5_zone ? st_bull : (cf_f5_zone_touch ? st_amber : st_neutral), cf_f6_sweep ? st_bull : (cf_f6_sweep_touch ? st_amber : st_neutral), cf_f8_volume ? st_bull : (cf_f8_volume_touch ? st_amber : st_neutral), cf_f10_fib ? st_bull : (cf_f10_fib_touch ? st_amber : st_neutral), cf_f7_structure_break ? st_bull : (cf_f7_structure_touch ? st_amber : st_neutral), cf_f4_level ? st_bull : (cf_f4_level_touch ? st_amber : st_neutral), cf_f1_flip ? st_bull : (cf_f1_flip_touch ? st_amber : st_neutral), cf_f9_htf_flip ? st_bull : (cf_f9_htf_flip_touch ? st_amber : st_neutral))
+        array&lt;string&gt; conf_tips = array.from("HTF — the HTF CBC direction agrees with the current LTF direction.", "Cloud — the LTF EMA9/20 cloud agrees with the current direction.", "Zone — BRSG zone or HTF Flip FVG touch. Amber = touched, but outside the recency window.", "Sweep — liquidity sweep of the last confirmed HTF swing. Amber = touched, but outside the recency window.", "Volume Spike on the HTF flip candle. Amber = touched, but its toggle is off.", "Fib Golden Pocket (50%-61.8%) touch. Amber = touched, but outside the recency window or its toggle is off.", "Structure Break (BOS/CHoCH). Amber = touched, but its toggle is off.", "Level — price is currently near a key level. Amber = touched, but its toggle is off (off by default).", "Flip (LTF) — valid from the LTF's own flip until the next reverse flip. Amber = touched, but its toggle is off (off by default).", "HTF Flip FVG — true while the current flip's Fair Value Gap remains unfilled; invalidated the instant price trades back into it. Amber = true, but its toggle is off (off by default).")
+        // v4.69: leading Score cell (index 0) reuses confluence_score/confluence_max_score/
+        // confluence_alert_threshold — same values and same green/gray rule as the Status table's own
+        // Confluence Score row — so the total is visible right on this table too, not just there.
+        string conf_score_text = "S:" + str.tostring(confluence_score) + "/" + str.tostring(confluence_max_score)
+        color conf_score_color = confluence_score &gt;= confluence_alert_threshold ? st_bull : st_neutral
+        for i = 0 to 10
+            string conf_cell_txt = i == 0 ? conf_score_text : array.get(conf_texts, i - 1)
+            color conf_cell_bg = i == 0 ? conf_score_color : array.get(conf_colors, i - 1)
+            string conf_cell_tip = i == 0 ? "Live Confluence Score — counted factors / max possible (the denominator shrinks if a toggleable factor is switched off above)." : array.get(conf_tips, i - 1)
+            table.cell(conf_tbl, i % conf_cols, i / conf_cols, conf_cell_txt, bgcolor=conf_cell_bg, text_color=txt_on, text_size=conf_txt_sz, text_halign=text.align_center, tooltip=conf_cell_tip)
     true
 
 // v4.60: on-chart Fib Zone box — a small shaded box near the current bar showing the 50%-61.8%
@@ -7672,11 +7819,31 @@ if barstate.islast
     return lines;
   }
 
+  // Per-factor descriptions for the hover tooltip on each Confluence Factors cell — per follow-up
+  // ("include a tooltip to see in the app what is counted in the confluence score"). Keyed by the
+  // factor's base name (before any "(detail)" suffix is stripped off during parsing). Wording mirrors
+  // the Pine indicator's own on-chart Confluence Factors table tooltips (conf_tips in
+  // f_render_confluence_cells()) for consistency, adapted since the app only ever sees a factor that
+  // is either counted (✓) or entirely absent from the text — there's no amber "touched but excluded"
+  // state here the way there is on the indicator's 3-way green/amber/gray cells.
+  const CONFLUENCE_FACTOR_TIPS = {
+    HTF: "Always counted. The HTF's own CBC direction agrees with the current LTF direction.",
+    Cloud: 'Always counted. The LTF EMA9/20 cloud agrees with the current direction.',
+    Zone: 'Always counted. Price touching the BRSG zone or the HTF Flip FVG, within the recency window of the HTF flip.',
+    Sweep: 'Always counted. A liquidity sweep of the last confirmed HTF swing high/low, within the recency window.',
+    Volume: 'Optional (off by default). HTF Flip Volume Spike — the flip candle\'s own volume was well above its trailing average. Only appears here at all when its Pine input toggle is switched on.',
+    Fib: 'Optional (off by default). Fib Golden Pocket (50%-61.8%) touch on the last confirmed HTF swing. Only appears here when its Pine input toggle is switched on.',
+    Structure: 'Optional (off by default). HTF Structure Break (BOS/CHoCH). Only appears here when its Pine input toggle is switched on.',
+    Level: 'Optional (off by default). Price is currently near a key level. Only appears here when its Pine input toggle is switched on.',
+    Flip: 'Optional (off by default). The LTF has just flipped bullish/bearish. Only appears here when its Pine input toggle is switched on.',
+    HTFFlip: "Optional (off by default). True while the current HTF flip's own Fair Value Gap remains unfilled — invalidated once price trades back into it. Only appears here when its Pine input toggle is switched on.",
+  };
+
   // Parses the Pine script's "Confluence: N/M  <factors>" alert line into a small color-coded grid
   // — the app-side equivalent of the indicator's own on-chart Confluence Factors table. The factors
   // string (confluence_reasons_str in the Pine script) is a run of "✓Name" / "✗Name" tokens, each
   // optionally followed by "(detail)" (e.g. "✓Flip(3)  ✓HTF(15)  ✗Zone  ...") — the line count varies
-  // (6-10 factors) since the 4 extended factors are omitted entirely from the string when their own
+  // (4-10 factors) since the 6 optional factors are omitted entirely from the string when their own
   // toggle is off. Returns '' when no such line is found (older alerts, or non-CBC-Wire alert types),
   // so this is always safe to call unconditionally. Reuses the existing .row-group/.field/
   // .section-label classes already styling every other field-body row — no new CSS needed. Note:
@@ -7693,13 +7860,23 @@ if barstate.islast
     const re = /([✓✗])([A-Za-z]+)(?:\(([^)]*)\))?/g;
     let fm;
     while ((fm = re.exec(factorsStr))) {
-      factors.push({ ok: fm[1] === '✓', name: fm[2] + (fm[3] ? `(${fm[3]})` : '') });
+      factors.push({ ok: fm[1] === '✓', base: fm[2], name: fm[2] + (fm[3] ? `(${fm[3]})` : '') });
     }
     if (!factors.length) return '';
-    const cellsHtml = factors.map(f =>
-      `<div class="field ${f.ok ? 'bull' : 'neutral'}"><span class="k">${escapeHtml(f.name)}</span><span class="v">${f.ok ? '✓' : '✗'}</span></div>`
-    ).join('');
-    return `<div class="section-label">Confluence Factors (${escapeHtml(score)}/${escapeHtml(max)})</div><div class="row-group">${cellsHtml}</div>`;
+    // v4.74 follow-up ("whatever is included in the table for confluence... should have an orange
+    // border"): counted (✓) cells get the confluence-field-included class, which adds an orange
+    // border — scoped to just this grid (confluence-field), not the generic .field.bull used all
+    // over the rest of the app for other bullish badges, so this doesn't bleed into anything else.
+    const cellsHtml = factors.map(f => {
+      const tip = CONFLUENCE_FACTOR_TIPS[f.base] || '';
+      return `<div class="field confluence-field ${f.ok ? 'bull confluence-field-included' : 'neutral'}"${tip ? ` title="${escapeHtml(tip)}"` : ''}><span class="k">${escapeHtml(f.name)}</span><span class="v">${f.ok ? '✓' : '✗'}</span></div>`;
+    }).join('');
+    // Section-level tooltip, per follow-up ("include a tooltip to see in the app what is counted in
+    // the confluence score") — the overview rule, complementing each cell's own specific tooltip
+    // above: HTF/Cloud/Zone/Sweep always count; everything else is an optional Pine input toggle and
+    // simply won't appear in this list at all when switched off.
+    const sectionTip = 'HTF, Cloud, Zone, and Sweep always count toward the score. Every other factor (Volume, Fib, Structure, Level, Flip (LTF), HTFFlip) is an optional Pine input toggle — it only shows up here, and only counts, when that toggle is switched on in the indicator\'s settings. Hover a cell below for what it specifically checks.';
+    return `<div class="section-label" title="${escapeHtml(sectionTip)}">Confluence Factors (${escapeHtml(score)}/${escapeHtml(max)})</div><div class="row-group">${cellsHtml}</div>`;
   }
 
   // Escapes text, then colors "Bullish"/"LONG"/"HH / HL" green and "Bearish"/"SHORT"/"LH / LL" red
@@ -8052,6 +8229,18 @@ if barstate.islast
     if (/VWAP Bounce/i.test(joined)) return 'status-aplus';
     if (/ORB Flip/i.test(joined)) return 'status-fail';
     if (/ORB Fail from/i.test(joined)) return 'status-stall';
+    // Plain ORB-level alerts — a Level Proximity touch on "ORB Low"/"ORB High" ("ORB Low Crossing
+    // (0.5 points above Price, ORB Low: 7682.5)") or the Opening-Range breakout bullet ("Outside
+    // HTF ORB: Above/Below") — per follow-up ("change to yellow border for orb alerts"). Checked
+    // after the ORB Retest Flip/Fail-from cases above so those keep their own red/amber coloring;
+    // ORB Pass (the Retest feature's success outcome) is a different bullet shape ("ORB Pass +/-")
+    // that doesn't match either pattern below, so it's untouched and still falls through to the
+    // default green "confirmed" border.
+    if (/\bORB[\s-][A-Za-z]*\s*(Crossing|Approaching)\s*\(/i.test(joined)) return 'status-orb';
+    if (/Outside HTF ORB:\s*(Above|Below)/i.test(joined)) return 'status-orb';
+    // High Confluence Setup — per follow-up asking what this card is and requesting a yellow
+    // border for it too (its own class, same yellow hex as status-orb/status-unconfirmed).
+    if (/High Confluence Setup/i.test(joined)) return 'status-confluence';
     if (/UNCONFIRMED|early\/unconfirmed/i.test(joined)) return 'status-unconfirmed';
     return 'status-confirmed';
   }

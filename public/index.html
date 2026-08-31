@@ -1153,7 +1153,7 @@
 
   <div id="pineView" style="display:none;">
     <div class="pine-toolbar">
-      <div class="pine-toolbar-title">CBC_v4_67.pine &middot; v6</div>
+      <div class="pine-toolbar-title">CBC_v4_68.pine &middot; v6</div>
       <button id="pineCopyBtn">Copy script</button>
     </div>
     <pre class="pine-pre"><code id="pineCode">// =====================================================================================
@@ -1815,10 +1815,36 @@
 // Purely cosmetic text-literal change on the two label.new() calls — no new inputs, no logic change,
 // no effect on fib_valid/fib_price_in_zone/cf_f10_fib_touch or anything else that reads the fib_0/
 // fib_100 values themselves.
+// 08/30/2026: v4.68 - Four follow-ups. (1) Fib 0%/100% line color default changed from gray to purple
+// (col_fib_01_lines), per screenshot of the color picker with purple selected. (2) FIB 0/FIB 1 line
+// labels' text size bumped from size.tiny to size.small, matching every other reference-line label in
+// the file (YDH/YDL/PMH/PML/all 3 ORB pairs all use size.small) — per follow-up with a screenshot
+// showing the mismatch. (3) Confluence factors 2-5 (HTF/Cloud/Level/Zone) reordered to lead the
+// Confluence Score's alert breakdown string (cf_core_reasons_str) and the Confluence Factors cells
+// table (conf_texts/conf_colors/conf_tips), ahead of Flip(LTF)/Sweep/Structure/Volume/HTFFlip/Fib —
+// display order only, per follow-up ("2,3,4,5 should be first in the score"); confluence_score's own
+// sum and the cf_f1.._f10 identifiers are unchanged (addition is order-independent). (4) Confluence
+// factor #9 (HTF Flip Recency, cf_f9_htf_flip) reworked per follow-up ("#9 uses fair value gaps, once
+// filled they are invalid") — it now tracks whether the CURRENT HTF flip's own Fair Value Gap
+// (htf_fvg_exists/top/bot, already computed for factor #5/Zone — no new request.security call) is
+// still unfilled, via a new persistent htf_fvg_filled latch that clears on every fresh flip and sets
+// true the instant price trades back into the gap. This replaces the old htf_has_flipped latch, which
+// was a one-way switch (set true on the chart's first-ever HTF flip, never reset) — meaning factor #9
+// had effectively been permanently true forever after that first flip, regardless of price action
+// since. htf_has_flipped itself was removed as dead code (its only reader was factor #9). No direction
+// check was added (matches the old behavior — any unfilled post-flip gap counts, bull or bear).
+// NOT YET IMPLEMENTED — still pending clarification: the requested "small border around the four"
+// (HTF/Cloud/Level/Zone) cells in the Confluence Factors table. Pine's table API has no per-cell
+// border — table.new()'s border_width/border_color draw uniform gridlines between EVERY cell, and
+// frame_width/frame_color only wrap the table's own outer edge; neither can ring an arbitrary subset
+// of cells. Flagged to the user in-chat with the real options (e.g. a second table just for these 4,
+// which gets its own real frame — but Pine's 9 fixed table positions can't guarantee pixel-perfect
+// adjacency to the main table) rather than guessing at an implementation, especially with the file
+// already having hit the CE10117 token ceiling once this session (v4.66).
 // ====================================================================================
 
 //@version=6
-indicator("v4.67-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+indicator("v4.68-wCBC ", overlay = true, behind_chart = false, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 
 const string grp_or_sessions = "Opening Range (Sessions)"
 const string grp_orb_retest = "ORB Retest (Break &amp; Base)"
@@ -1992,12 +2018,12 @@ confluence_use_structure_break = input.bool(true, "Include HTF Structure Break (
 confluence_use_volume = input.bool(true, "Include HTF Flip Volume Spike in score", group="Confluence Score", tooltip="When off, this factor is excluded from the Confluence Score entirely — its ✓/✗ line is omitted from the alert breakdown and the score denominator drops by 1.")
 confluence_vol_mult = input.float(1.5, "Volume Spike: Flip Candle Volume ≥ N × Average", minval=1.0, step=0.1, group="Confluence Score", tooltip="How many times the HTF flip candle's own volume must exceed its trailing average (below) to count as a genuine volume spike — real participation, not a low-volume drift-through flip.")
 htf_vol_avg_len = input.int(20, "Volume Spike: HTF Bars for Average", minval=2, group="Confluence Score", tooltip="How many prior HTF bars feed the trailing average volume used for the spike comparison above.")
-confluence_use_htf_flip = input.bool(true, "Include HTF Flip Recency in score", group="Confluence Score", tooltip="A separate factor from Flip(LTF) above — true from the bar the HTF flips through every subsequent bar, until the next (reverse) HTF flip invalidates it — no fixed bar-count expiry. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown.")
+confluence_use_htf_flip = input.bool(true, "Include HTF Flip Recency in score", group="Confluence Score", tooltip="A separate factor from Flip(LTF) above — true while the current HTF flip's own Fair Value Gap remains unfilled, false the instant price trades back into it, true again on the next flip's fresh gap. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown.")
 confluence_use_fib = input.bool(true, "Include Fib Golden Pocket (50%-61.8%) in score", group="Confluence Score", tooltip="10th confluence factor — price wicks into the 50%-61.8% retracement zone of the last confirmed HTF swing (same swing used by Liquidity Sweep), within the same recency window as Zone/Sweep/Structure/Volume above. When off, excluded from the score entirely and its ✓/✗ line is omitted from the alert breakdown. Also shown as its own always-visible Status table row regardless of this toggle.")
 show_fib_zone_box = input.bool(true, "Show Fib Zone box on chart", inline="fibbox", group="Confluence Score", tooltip="Draws a small shaded horizontal zone at the 50%-61.8% retracement levels, anchored near the current bar, with the price levels printed as text inside it. Green when price is currently touching the zone (matches the Fib Golden Pocket factor's raw touch state), gray otherwise. Independent of the Fib Zone Status table row and of the Include-in-score toggle above — this is purely a chart visual.")
 fib_zone_box_bars = input.int(20, "width (bars)", minval=2, maxval=300, inline="fibbox", group="Confluence Score", tooltip="How many bars back from the current bar the Fib Zone box spans.")
 show_fib_01_lines = input.bool(true, "Show 0% / 100% Fib lines", inline="fib01", group="Confluence Score", tooltip="Draws two extra reference lines at the 0% and 100% levels — the actual last confirmed HTF swing high/low the 50%-61.8% zone above is measured from, i.e. the full swing range. Same width (bars back) as the Fib Zone box above. Labeled \"0\" and \"1\" at the right edge.")
-col_fib_01_lines = input.color(color.gray, "Line color", inline="fib01", group="Confluence Score")
+col_fib_01_lines = input.color(color.purple, "Line color", inline="fib01", group="Confluence Score")
 // v4.64: split out per follow-up ("is there a way to change the text color on 0 and 1 fib and line
 // style") — col_fib_01_lines above now controls only the line itself; text color and line pattern
 // are separate so they no longer have to match the line's color/style.
@@ -3677,17 +3703,12 @@ var float htf_fvg_prev_lo = na
 var float htf_fvg_next_hi = na
 var float htf_fvg_next_lo = na
 var bool htf_fvg_bull = bool(na)
-// v4.50: persistent "has a real HTF flip happened yet" latch, set on the same trigger used to freeze
-// the FVG candles — feeds cf_f9_htf_flip_touch below (valid for the whole post-flip life, not a fixed
-// HTF-bar recency cap).
-var bool htf_has_flipped = false
 if htf_just_flipped_for_zone
     htf_fvg_prev_hi := sig_htf_hi[1]
     htf_fvg_prev_lo := sig_htf_lo[1]
     htf_fvg_next_hi := na
     htf_fvg_next_lo := na
     htf_fvg_bull := htf_cbc_labels_f == 1.0
-    htf_has_flipped := true
 if htf_bars_since_flip == 1
     htf_fvg_next_hi := sig_htf_hi
     htf_fvg_next_lo := sig_htf_lo
@@ -3695,6 +3716,18 @@ bool htf_fvg_ready = not na(htf_fvg_prev_hi) and not na(htf_fvg_prev_lo) and not
 bool htf_fvg_exists = htf_fvg_ready and (htf_fvg_bull ? htf_fvg_next_lo &gt; htf_fvg_prev_hi : htf_fvg_prev_lo &gt; htf_fvg_next_hi)
 float htf_fvg_top = htf_fvg_exists ? (htf_fvg_bull ? htf_fvg_next_lo : htf_fvg_prev_lo) : na
 float htf_fvg_bot = htf_fvg_exists ? (htf_fvg_bull ? htf_fvg_prev_hi : htf_fvg_next_hi) : na
+// v4.68: persistent "has THIS flip's own FVG been filled yet" latch, per follow-up ("#9 uses fair
+// value gaps, once filled they are invalid"). Replaces the old htf_has_flipped one-way latch, which
+// was set true on the first-ever HTF flip and never reset — so cf_f9 stayed true forever after that,
+// regardless of what price did afterward. Cleared on every new flip (a fresh, as-yet-untouched gap),
+// then latches true the first time price trades back into the gap zone (same touch condition Zone/
+// cf_f5 already uses against this same htf_fvg_top/bot) and stays true — i.e. the gap stays "filled"
+// — until the next flip opens a new one.
+var bool htf_fvg_filled = false
+if htf_just_flipped_for_zone
+    htf_fvg_filled := false
+if htf_fvg_exists and low &lt;= htf_fvg_top and high &gt;= htf_fvg_bot
+    htf_fvg_filled := true
 // v4.64: generic Fair Value Gap boxes — runs every bar (unlike the barstate.islast-only render
 // functions used for the Status table/Fib Zone/etc.), since each individual gap must be captured and
 // boxed at the historical bar it actually forms on, then persist (extending right) across every
@@ -4289,11 +4322,15 @@ float htf_flip_rvol = (not na(htf_flip_candle_vol) and not na(htf_flip_candle_vo
 bool cf_f8_volume_touch = not na(htf_flip_rvol) and htf_flip_rvol &gt;= confluence_vol_mult and ltf_bars_since_htf_flip &lt;= confluence_recency_ltf_bars
 bool cf_f8_volume = confluence_use_volume and cf_f8_volume_touch
 // v4.47: HTF Flip Recency — a separate factor from Flip(LTF) (cf_f1, which checks the LTF's OWN
-// flip via ltf_has_flipped). This one checks the HTF's own flip via htf_has_flipped (latched above,
-// no new request.security call). v4.50: both cf_f1_flip and this factor switched from a fixed
-// bar-count recency cap to "valid for the entire post-flip life until the next reverse flip" — per
-// request, neither expires on a timer anymore, only on the opposite flip re-arming the latch.
-bool cf_f9_htf_flip_touch = htf_has_flipped
+// flip via ltf_has_flipped). v4.68: reworked per follow-up ("#9 uses fair value gaps, once filled
+// they are invalid") — now true whenever the current HTF flip's own Fair Value Gap (htf_fvg_exists,
+// computed above) still exists AND hasn't been filled yet (htf_fvg_filled, also above); goes false
+// the instant price trades back into the gap, and only becomes true again once the NEXT flip opens a
+// fresh, untouched gap. If a given flip produces no gap at all (htf_fvg_exists never true for it),
+// this factor simply never fires for that flip. No direction check beyond the gap itself (matches
+// the old behavior). Replaces the old htf_has_flipped one-way "has the HTF EVER flipped" latch, which
+// never reset and so stayed true forever after the chart's very first flip.
+bool cf_f9_htf_flip_touch = htf_fvg_exists and not htf_fvg_filled
 bool cf_f9_htf_flip = confluence_use_htf_flip and cf_f9_htf_flip_touch
 // v4.54: Fib Golden Pocket (50%-61.8%) — 10th confluence factor, per follow-up. Anchored to the last
 // confirmed HTF swing high/low (h_last_hi/h_last_lo, already computed above for Sweep/Pivot(HTF) — no
@@ -4340,7 +4377,10 @@ string cf_f10_reasons_part = not confluence_use_fib ? "" : "  " + (cf_f10_fib ? 
 // toggleable ones) pieces, reassembled into confluence_reasons_str below — the full-name alert
 // breakdown used by a_status_msg. (v4.55: these two pieces used to also feed an abbreviated Status
 // table display; that display is gone now, replaced by the Confluence Factors cells table below.)
-string cf_core_reasons_str = (cf_f1_flip ? "✓" : "✗") + "Flip(" + str.tostring(timeframe.multiplier) + ")  " + (cf_f2_htf ? "✓" : "✗") + "HTF(" + htf_timeframe + ")  " + (cf_f3_cloud ? "✓" : "✗") + "Cloud  " + (cf_f4_level ? "✓" : "✗") + "Level  " + (cf_f5_zone ? "✓" : "✗") + "Zone  " + (cf_f6_sweep ? "✓" : "✗") + "Sweep"
+// v4.68: reordered per follow-up ("2,3,4,5 should be first in the score") — HTF/Cloud/Level/Zone
+// (factors 2-5) now lead, followed by Flip(LTF) and Sweep. Display order only; confluence_score's own
+// sum is unaffected (addition is order-independent) and the cf_f1.._f10 identifiers are unchanged.
+string cf_core_reasons_str = (cf_f2_htf ? "✓" : "✗") + "HTF(" + htf_timeframe + ")  " + (cf_f3_cloud ? "✓" : "✗") + "Cloud  " + (cf_f4_level ? "✓" : "✗") + "Level  " + (cf_f5_zone ? "✓" : "✗") + "Zone  " + (cf_f1_flip ? "✓" : "✗") + "Flip(" + str.tostring(timeframe.multiplier) + ")  " + (cf_f6_sweep ? "✓" : "✗") + "Sweep"
 string cf_extended_reasons_str = cf_f7_reasons_part + cf_f8_reasons_part + cf_f9_reasons_part + cf_f10_reasons_part
 string confluence_reasons_str = cf_core_reasons_str + cf_extended_reasons_str
 // v4.52: info-only diagnostic — the raw, ungated "_touch" state of the 5 factors that have something
@@ -4999,8 +5039,8 @@ f_render_pivot_table() =&gt;
 
 // v4.55: Confluence Factors cells table — dedicated small table (same pattern as the Pivot Points
 // table above), one cell per confluence factor so each can carry its own color. Row 0 holds the 6
-// "core" factors (Flip/HTF/Cloud/Level/Zone/Sweep — always in play, never toggled off). Row 1 holds
-// the 4 "extended" toggleable factors (Structure/Volume/HTFFlip/Fib). Color rule, uniform across all
+// "core" factors (v4.68 order: HTF/Cloud/Level/Zone/Flip/Sweep — always in play, never toggled off).
+// Row 1 holds the 4 "extended" toggleable factors (Structure/Volume/HTFFlip/Fib). Color rule, uniform across all
 // 10 cells: counted (contributes to confluence_score right now) = green; not counted but its raw touch
 // condition IS true (excluded only by a recency window or its own include/exclude toggle) = amber;
 // otherwise = gray. Reuses every cf_f*/cf_f*_touch boolean already computed above — no new signal
@@ -5041,9 +5081,12 @@ f_render_confluence_cells() =&gt;
         // filling left-to-right then wrapping (row = i / conf_cols, col = i % conf_cols). Same
         // ✓/✗ text and green/amber/gray color rule as before — no signal-logic change, just a display
         // reflow.
-        array&lt;string&gt; conf_texts = array.from((cf_f1_flip ? "✓" : "✗") + "Flp" + str.tostring(timeframe.multiplier), (cf_f2_htf ? "✓" : "✗") + "H" + htf_timeframe, (cf_f3_cloud ? "✓" : "✗") + "Cld", (cf_f4_level ? "✓" : "✗") + "Lvl", (cf_f5_zone ? "✓" : "✗") + "Zn", (cf_f6_sweep ? "✓" : "✗") + "Swp", (cf_f7_structure_break ? "✓" : "✗") + "Str", (cf_f8_volume ? "✓" : "✗") + "Vol", (cf_f9_htf_flip ? "✓" : "✗") + "HF", (cf_f10_fib ? "✓" : "✗") + "Fib")
-        array&lt;color&gt; conf_colors = array.from(cf_f1_flip ? st_bull : st_neutral, cf_f2_htf ? st_bull : st_neutral, cf_f3_cloud ? st_bull : st_neutral, cf_f4_level ? st_bull : st_neutral, cf_f5_zone ? st_bull : (cf_f5_zone_touch ? st_amber : st_neutral), cf_f6_sweep ? st_bull : (cf_f6_sweep_touch ? st_amber : st_neutral), cf_f7_structure_break ? st_bull : (cf_f7_structure_touch ? st_amber : st_neutral), cf_f8_volume ? st_bull : (cf_f8_volume_touch ? st_amber : st_neutral), cf_f9_htf_flip ? st_bull : (cf_f9_htf_flip_touch ? st_amber : st_neutral), cf_f10_fib ? st_bull : (cf_f10_fib_touch ? st_amber : st_neutral))
-        array&lt;string&gt; conf_tips = array.from("Flip (LTF) — valid from the LTF's own flip until the next reverse flip.", "HTF — the HTF CBC direction agrees with the current LTF direction.", "Cloud — the LTF EMA9/20 cloud agrees with the current direction.", "Level — price is currently near a key level.", "Zone — BRSG zone or HTF Flip FVG touch. Amber = touched, but outside the recency window.", "Sweep — liquidity sweep of the last confirmed HTF swing. Amber = touched, but outside the recency window.", "Structure Break (BOS/CHoCH). Amber = touched, but its toggle is off.", "Volume Spike on the HTF flip candle. Amber = touched, but its toggle is off.", "HTF Flip Recency — valid from the HTF's own flip until the next reverse flip. Amber = true, but its toggle is off.", "Fib Golden Pocket (50%-61.8%) touch. Amber = touched, but outside the recency window or its toggle is off.")
+        // v4.68: reordered per follow-up ("2,3,4,5 should be first in the score") — HTF/Cloud/Level/
+        // Zone (factors 2-5) now occupy cells 0-3, followed by Flip(LTF), Sweep, Structure, Volume,
+        // HTFFlip, Fib. Display order only — no change to cf_f1.._f10 identifiers or scoring.
+        array&lt;string&gt; conf_texts = array.from((cf_f2_htf ? "✓" : "✗") + "H" + htf_timeframe, (cf_f3_cloud ? "✓" : "✗") + "Cld", (cf_f4_level ? "✓" : "✗") + "Lvl", (cf_f5_zone ? "✓" : "✗") + "Zn", (cf_f1_flip ? "✓" : "✗") + "Flp" + str.tostring(timeframe.multiplier), (cf_f6_sweep ? "✓" : "✗") + "Swp", (cf_f7_structure_break ? "✓" : "✗") + "Str", (cf_f8_volume ? "✓" : "✗") + "Vol", (cf_f9_htf_flip ? "✓" : "✗") + "HF", (cf_f10_fib ? "✓" : "✗") + "Fib")
+        array&lt;color&gt; conf_colors = array.from(cf_f2_htf ? st_bull : st_neutral, cf_f3_cloud ? st_bull : st_neutral, cf_f4_level ? st_bull : st_neutral, cf_f5_zone ? st_bull : (cf_f5_zone_touch ? st_amber : st_neutral), cf_f1_flip ? st_bull : st_neutral, cf_f6_sweep ? st_bull : (cf_f6_sweep_touch ? st_amber : st_neutral), cf_f7_structure_break ? st_bull : (cf_f7_structure_touch ? st_amber : st_neutral), cf_f8_volume ? st_bull : (cf_f8_volume_touch ? st_amber : st_neutral), cf_f9_htf_flip ? st_bull : (cf_f9_htf_flip_touch ? st_amber : st_neutral), cf_f10_fib ? st_bull : (cf_f10_fib_touch ? st_amber : st_neutral))
+        array&lt;string&gt; conf_tips = array.from("HTF — the HTF CBC direction agrees with the current LTF direction.", "Cloud — the LTF EMA9/20 cloud agrees with the current direction.", "Level — price is currently near a key level.", "Zone — BRSG zone or HTF Flip FVG touch. Amber = touched, but outside the recency window.", "Flip (LTF) — valid from the LTF's own flip until the next reverse flip.", "Sweep — liquidity sweep of the last confirmed HTF swing. Amber = touched, but outside the recency window.", "Structure Break (BOS/CHoCH). Amber = touched, but its toggle is off.", "Volume Spike on the HTF flip candle. Amber = touched, but its toggle is off.", "HTF Flip FVG — true while the current flip's Fair Value Gap remains unfilled; invalidated the instant price trades back into it. Amber = true, but its toggle is off.", "Fib Golden Pocket (50%-61.8%) touch. Amber = touched, but outside the recency window or its toggle is off.")
         for i = 0 to 9
             table.cell(conf_tbl, i % conf_cols, i / conf_cols, array.get(conf_texts, i), bgcolor=array.get(conf_colors, i), text_color=txt_on, text_size=conf_txt_sz, text_halign=text.align_center, tooltip=array.get(conf_tips, i))
     true
@@ -5120,14 +5163,14 @@ f_render_fib_zone_box() =&gt;
         else
             if na(fib_0_ln)
                 fib_0_ln := line.new(fib_box_left, fib_0, bar_index, fib_0, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
-                fib_0_lbl := label.new(bar_index, fib_0, "FIB 0", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_0_lbl := label.new(bar_index, fib_0, "FIB 0", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.small)
             else
                 line.set_xy1(fib_0_ln, fib_box_left, fib_0)
                 line.set_xy2(fib_0_ln, bar_index, fib_0)
                 label.set_xy(fib_0_lbl, bar_index, fib_0)
             if na(fib_100_ln)
                 fib_100_ln := line.new(fib_box_left, fib_100, bar_index, fib_100, color=col_fib_01_lines, width=1, style=f_ref_line_style(fib_01_line_style), extend=extend.none)
-                fib_100_lbl := label.new(bar_index, fib_100, "FIB 1", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.tiny)
+                fib_100_lbl := label.new(bar_index, fib_100, "FIB 1", color=color.new(color.white, 100), textcolor=txt_fib_01_lines, style=label.style_label_left, size=size.small)
             else
                 line.set_xy1(fib_100_ln, fib_box_left, fib_100)
                 line.set_xy2(fib_100_ln, bar_index, fib_100)

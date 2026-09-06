@@ -552,6 +552,28 @@
   .tier-actionable .tier-label { background: #341010; color: #e6a3a3; }
   .tier-forming .tier-label { background: #854f0b; color: #faeeda; }
   .tier-context .tier-label { background: #1c2028; color: #7a7d87; }
+  /* 090526: category-group accordion headers (Entry/EMA/Pivot/Level/Info/Other) — replaced the
+     Actionable/Forming/Context tiers above in render(); those rules are left in place as a revert
+     reference (see render()'s comment) and are otherwise unused now. Each background is a dark tint
+     of that category's border color from the signal-classification pill scheme, so the accordion
+     header and the card pills inside it read as the same color family. */
+  .tier-cat-entry .tier-label { background: #132036; color: #8ec0fb; }
+  .tier-cat-ema .tier-label { background: #33220f; color: #ffb877; }
+  .tier-cat-pivot .tier-label { background: #341414; color: #ff9d9d; }
+  .tier-cat-level .tier-label { background: #0f2e33; color: #7fe3f0; }
+  .tier-cat-info .tier-label { background: #332c10; color: #f5dd7a; }
+  .tier-cat-other .tier-label { background: #1c2028; color: #9aa0ab; }
+  /* Sub-header inside a combined category group (Entry group's "Entry"/"Breakout" split, EMA group's
+     "EMA200"/"EMA-CROSS" split) — a plain small label, not another collapsible accordion level. */
+  .subcat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    padding: 2px 4px;
+    margin: 4px 0 4px 8px;
+    opacity: 0.85;
+  }
   .card-summary {
     font-family: var(--mono);
     font-size: 12px;
@@ -6481,10 +6503,17 @@ if barstate.islast
   // Simple Mode: bare one-line-per-alert log (time + symbol + terse phrase, no card chrome/badges)
   // instead of the normal tiered/chronological card feed — same underlying `alerts` data and Alert
   // Types filter, just a different renderer (see renderSimpleRow / the `if (simpleMode)` branch in
-  // render()). Always a flat, all-symbols-mixed list (like the Chronological view's flat list),
-  // since a per-symbol single-select tab doesn't make sense for a log you're meant to skim across
-  // everything at once — so it gets its own multi-select Symbols dropdown, same mechanism as
-  // Chronological's, just independently persisted so picking symbols for one doesn't affect the other.
+  // render()). Per follow-up request: Simple Mode DOES use the same per-symbol tab bar (symbolTabsEl,
+  // "All" + one tab per symbol) as the normal card feed — clicking a symbol's tab sets activeFilter
+  // and narrows the flat log to just that symbol, same single-select mechanism used elsewhere (see
+  // the `bySymbol` simpleMode branch a bit further down in render()). This is IN ADDITION TO, not
+  // instead of, the separate "Symbols ▾" multi-select EXCLUDE picker just below (simpleSymbolExcluded)
+  // — the exclude picker controls which symbols appear in the tab bar AT ALL (and in the "All" tab's
+  // merged view), while the tab bar itself lets you narrow down to one of the still-included symbols
+  // at a time. The comment that used to be here claimed Simple Mode was "always a flat, all-symbols-
+  // mixed list" with no per-symbol tab — that was stale/inaccurate (per-symbol tabs already worked in
+  // Simple Mode, going back to the very first "tabs by symbol for simple mode" request this file's
+  // changelog history starts from); corrected here rather than left to mislead the next reader.
   const simpleModeBtn = document.getElementById('simpleModeBtn');
   const simpleSymbolWrap = document.getElementById('simpleSymbolWrap');
   const simpleSymbolBtn = document.getElementById('simpleSymbolBtn');
@@ -8496,6 +8525,41 @@ if barstate.islast
     return null;
   }
 
+  // Which signal-classification CATEGORY a headline belongs to — same per-bullet ALERT_ACTION_META
+  // lookup classifyTypePill uses for its pill, minus the label/isFlip bits, since this is only used
+  // to sort an alert into the right accordion group below. 'Other' covers anything without a meta
+  // entry (LuxAlgo Price Action types, "Other (unrecognized)", or any future ALERT_TYPE_DEFS addition
+  // that hasn't been given a category yet) — never left ungrouped.
+  function getAlertCategory(headlineLines) {
+    const bulletLines = getEffectiveLines(headlineLines);
+    for (const line of bulletLines) {
+      const def = ALERT_TYPE_DEFS.find(d => d.test(line));
+      if (!def) continue;
+      const meta = ALERT_ACTION_META[def.title];
+      if (!meta) continue;
+      if (def.title === 'Level Proximity (Pivot/YDH/YDL/ORB)' && /^•\s*Pivot (High|Low)/i.test(line)) return 'Pivot';
+      return meta.category;
+    }
+    return 'Other';
+  }
+
+  // 090526: accordion groups per follow-up request, replacing the old Actionable/Forming/Context
+  // tiers. Categories sharing a color are combined into one group with sub-headers for each — Entry
+  // groups Entry+Breakout (both blue), EMA groups EMA200+EMA-CROSS (both orange). Pivot/LEVEL/INFO
+  // each get their own single-category group, and anything with no meta match falls into Other. Test
+  // (currently only "Startup / Connected") is intentionally left out of this list — those alerts are
+  // filtered out of this view entirely, not just given an empty/hidden group, per request.
+  const CATEGORY_GROUP_DEFS = [
+    { key: 'entry', label: 'Entry', color: '#3b82f6', cats: ['Entry', 'Breakout'] },
+    { key: 'ema', label: 'EMA', color: '#f97316', cats: ['EMA200', 'EMA-CROSS'] },
+    { key: 'pivot', label: 'Pivot', color: '#ef4444', cats: ['Pivot'] },
+    { key: 'level', label: 'Level', color: '#22d3ee', cats: ['LEVEL'] },
+    { key: 'info', label: 'Info', color: '#eab308', cats: ['INFO'] },
+    { key: 'other', label: 'Other', color: '#8a8f9c', cats: ['Other'] },
+  ];
+  const CATEGORY_TO_GROUP = new Map();
+  CATEGORY_GROUP_DEFS.forEach(g => g.cats.forEach(c => CATEGORY_TO_GROUP.set(c, g)));
+
   // Splits a "Structure (Nm)" value like "HH / HL" into its Higher-High/Lower-High and
   // Higher-Low/Lower-Low halves and classifies bull (both High side) / bear (both Low side) /
   // neutral (mixed) — matching the Pine script's own stricter "both sides must agree" coloring rule.
@@ -9393,58 +9457,73 @@ if barstate.islast
       return;
     }
 
-    // Group by symbol (cockpit), then bucket each symbol's alerts into the 3 tiers above.
+    // 090526: group by symbol (cockpit), then bucket each symbol's alerts into the signal-
+    // classification CATEGORY groups (CATEGORY_GROUP_DEFS above) — replaces the old Actionable /
+    // Forming / Context tier buckets, per follow-up request ("change accordion based on colors
+    // above"). classifyTier() is still used, but ONLY to catch the 'hidden' case (a still-forming
+    // candle outside its configured Forming window) — its actionable/forming/context result itself
+    // is no longer what buckets an alert into a section. Test-category alerts (currently just
+    // "Startup / Connected") are dropped from this view entirely, per request ("dont display").
     const bySymbolGroups = new Map();
     filtered.forEach(a => {
       const sym = getSymbol(a.raw);
-      if (!bySymbolGroups.has(sym)) bySymbolGroups.set(sym, { actionable: [], forming: [], context: [] });
       const lines = (a.raw || '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const headlineLines = lines.filter((l, i) => i === 0 || l.startsWith('•') || /[✓✗]/.test(l));
       const tier = classifyTier(headlineLines, a.receivedAt);
-      // 'hidden': a still-forming-candle alert outside its configured "Forming window" — per request,
-      // these simply don't display at all (not even under Context) until the candle nears its close.
       if (tier === 'hidden') return;
-      bySymbolGroups.get(sym)[tier].push(a);
+      const category = getAlertCategory(headlineLines);
+      if (category === 'Test') return;
+      const groupDef = CATEGORY_TO_GROUP.get(category) || CATEGORY_GROUP_DEFS.find(g => g.key === 'other');
+      if (!bySymbolGroups.has(sym)) bySymbolGroups.set(sym, new Map());
+      const symGroups = bySymbolGroups.get(sym);
+      if (!symGroups.has(groupDef.key)) symGroups.set(groupDef.key, new Map());
+      const groupCats = symGroups.get(groupDef.key);
+      if (!groupCats.has(category)) groupCats.set(category, []);
+      groupCats.get(category).push(a);
     });
     // Symbols ordered by most recent activity (their newest alert's timestamp), matching the
     // existing "most recent first" expectation from the old flat chronological feed.
     const symbolOrder = Array.from(bySymbolGroups.keys()).sort((s1, s2) => {
-      const t = sym => Math.max(...['actionable', 'forming', 'context'].flatMap(k => bySymbolGroups.get(sym)[k].map(a => a.receivedAt)), 0);
+      const t = sym => Math.max(...Array.from(bySymbolGroups.get(sym).values())
+        .flatMap(catMap => Array.from(catMap.values())).flat().map(a => a.receivedAt), 0);
       return t(s2) - t(s1);
     });
 
-    const TIER_META = {
-      actionable: { label: 'Actionable now', cls: 'tier-actionable' },
-      forming: { label: 'Forming', cls: 'tier-forming' },
-      context: { label: 'Context', cls: 'tier-context' },
-    };
     listEl.innerHTML = symbolOrder.map(sym => {
-      const g = bySymbolGroups.get(sym);
-      const tiersHtml = ['actionable', 'forming', 'context'].map(tier => {
-        const items = g[tier];
-        if (!items.length) return '';
-        const meta = TIER_META[tier];
-        // Items are already newest-first (alerts arrive via unshift), so slicing the first N here
-        // keeps the most recent ones — the count badge below still shows the TRUE total, uncapped.
-        const shownItems = items.slice(0, tierLimit);
-        const cardsHtml = shownItems.map(renderCard).join('');
-        const truncatedNote = shownItems.length < items.length
-          ? `<div class="tier-truncated-note">Showing ${shownItems.length} of ${items.length} — raise "Show per tier" above to see more.</div>`
-          : '';
-        const tierKey = `${sym}::${tier}`;
-        if (!seenTierKeys.has(tierKey)) {
-          seenTierKeys.add(tierKey);
-          collapsedTiers.add(tierKey); // default: collapsed until the user opens it
+      const symGroups = bySymbolGroups.get(sym);
+      const groupsHtml = CATEGORY_GROUP_DEFS.map(groupDef => {
+        const groupCats = symGroups.get(groupDef.key);
+        if (!groupCats) return '';
+        const allItems = Array.from(groupCats.values()).flat();
+        if (!allItems.length) return '';
+        const groupKey = `${sym}::${groupDef.key}`;
+        if (!seenTierKeys.has(groupKey)) {
+          seenTierKeys.add(groupKey);
+          collapsedTiers.add(groupKey); // default: collapsed until the user opens it
         }
-        const isCollapsed = collapsedTiers.has(tierKey);
-        return `<div class="tier-section ${meta.cls}">
-          <div class="tier-label ${isCollapsed ? 'collapsed' : ''}" data-tier-key="${escapeHtml(tierKey)}"><span class="tier-chevron">▾</span>${meta.label} <span class="tier-count">${items.length}</span></div>
-          <div class="tier-cards ${isCollapsed ? 'collapsed' : ''}">${cardsHtml}${truncatedNote}</div>
+        const isCollapsed = collapsedTiers.has(groupKey);
+        // A group with more than one category sharing its color (Entry: Entry+Breakout, EMA:
+        // EMA200+EMA-CROSS) gets a small sub-header per category; a single-category group (Pivot,
+        // Level, Info, Other) skips the sub-header since the group label already says it.
+        const catsHtml = groupDef.cats.map(cat => {
+          const items = groupCats.get(cat);
+          if (!items || !items.length) return '';
+          const shownItems = items.slice(0, tierLimit);
+          const cardsHtml = shownItems.map(renderCard).join('');
+          const truncatedNote = shownItems.length < items.length
+            ? `<div class="tier-truncated-note">Showing ${shownItems.length} of ${items.length} — raise "Show per tier" above to see more.</div>`
+            : '';
+          const subHeader = groupDef.cats.length > 1 ? `<div class="subcat-label">${escapeHtml(cat)} ${items.length}</div>` : '';
+          return `${subHeader}<div class="tier-cards">${cardsHtml}${truncatedNote}</div>`;
+        }).join('');
+        return `<div class="tier-section tier-cat-${groupDef.key}">
+          <div class="tier-label ${isCollapsed ? 'collapsed' : ''}" data-tier-key="${escapeHtml(groupKey)}"><span class="tier-chevron">▾</span>${groupDef.label} <span class="tier-count">${allItems.length}</span></div>
+          <div class="tier-cards ${isCollapsed ? 'collapsed' : ''}">${catsHtml}</div>
         </div>`;
       }).join('');
       return `<div class="symbol-cockpit">
         <div class="symbol-cockpit-header">${escapeHtml(sym || 'Unknown')}</div>
-        ${tiersHtml}
+        ${groupsHtml}
       </div>`;
     }).join('');
   }

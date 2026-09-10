@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"  />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"  />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Alert Feed</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230b0e14'/%3E%3Cpath d='M55 15 L30 55 L48 55 L42 85 L72 45 L52 45 Z' fill='%23f5a623'/%3E%3C/svg%3E" />
 <style>
@@ -1074,9 +1074,13 @@
   .jr-back-btn, .jr-danger-btn { background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); font-family: var(--sans); font-size: 12px; padding: 7px 14px; border-radius: 6px; cursor: pointer; }
   .jr-danger-btn { color: var(--jr-red); border-color: rgba(239,68,68,0.4); }
   .jr-danger-btn:hover { background: rgba(239,68,68,0.1); }
+  .jr-primary-btn { background: var(--jr-blue, #3b82f6); border: 1px solid var(--jr-blue, #3b82f6); color: #fff; font-family: var(--sans); font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 6px; cursor: pointer; }
+  .jr-primary-btn:hover { opacity: 0.9; }
+  .jr-primary-btn:disabled { opacity: 0.6; cursor: default; }
   .jr-editor-actions { display: flex; align-items: center; gap: 12px; }
   .jr-save-status { font-family: var(--mono); font-size: 12px; color: var(--jr-green); opacity: 0; transition: opacity 0.2s; }
   .jr-save-status.show { opacity: 1; }
+  .jr-save-status.error { color: var(--jr-red); opacity: 1; }
   .jr-meta-row { display: flex; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
   .jr-field { display: flex; flex-direction: column; gap: 6px; }
   .jr-field label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -1338,6 +1342,7 @@
         <button id="jrBackBtn" class="jr-back-btn">‹ Back to overview</button>
         <div class="jr-editor-actions">
           <span id="jrSaveStatus" class="jr-save-status">Saved ✓</span>
+          <button id="jrSaveBtn" class="jr-primary-btn">Save</button>
           <button id="jrDeleteBtn" class="jr-danger-btn" style="display:none;">Delete</button>
         </div>
       </div>
@@ -4395,6 +4400,7 @@
     privateChk.addEventListener('change', () => { jrPrivate = privateChk.checked; localStorage.setItem('jrPrivate', String(jrPrivate)); jrRenderOverview(); });
 
     document.getElementById('jrBackBtn').addEventListener('click', () => { jrFlushSave(); jrShowOverview(); });
+    document.getElementById('jrSaveBtn').addEventListener('click', () => jrFlushSave(true));
     document.getElementById('jrDeleteBtn').addEventListener('click', jrDeleteCurrent);
 
     ['jrDate', 'jrTitle', 'jrAmount'].forEach(id => {
@@ -4530,6 +4536,7 @@
   let jrEditingDate = null;      // the date currently loaded in the editor
   let jrEditingOriginal = null;  // the date it was loaded AS (in case the date field gets changed)
   let jrSaveTimer = null;
+  let jrStatusTimer = null;
 
   function jrOpenEditor(dateKey) {
     jrFlushSave();
@@ -4555,7 +4562,7 @@
     jrSaveTimer = setTimeout(jrFlushSave, 700);
   }
 
-  function jrFlushSave() {
+  function jrFlushSave(force) {
     clearTimeout(jrSaveTimer);
     if (!jrEditingDate) return;
     const newDate = document.getElementById('jrDate').value || jrEditingOriginal;
@@ -4571,28 +4578,55 @@
       issues: document.getElementById('jrIssues').innerHTML,
       wins: document.getElementById('jrWins').innerHTML,
     };
-    // Nothing at all entered for a brand-new day — don't create an empty record.
+    // Nothing at all entered for a brand-new day — don't create an empty record,
+    // unless the user explicitly hit Save (force), in which case tell them why not.
     const isBlank = !entry.title && entry.amount === null && !jrHasText(entry.premarket) && !jrHasText(entry.losses) && !jrHasText(entry.issues) && !jrHasText(entry.wins);
-    if (isBlank && !jrEntries[jrEditingOriginal]) return;
+    if (isBlank && !jrEntries[jrEditingOriginal]) {
+      if (force) jrShowSaveStatus('Nothing to save yet', true);
+      return;
+    }
+
+    const statusEl = document.getElementById('jrSaveStatus');
+    const saveBtn = document.getElementById('jrSaveBtn');
+    jrShowSaveStatus('Saving…', false);
+    if (saveBtn) saveBtn.disabled = true;
 
     const movedDate = newDate !== jrEditingOriginal;
     const doSave = () => fetch('/journal/' + encodeURIComponent(newDate), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry)
-    }).then(r => r.json()).then(saved => {
+    }).then(r => {
+      if (!r.ok) throw new Error('Server returned ' + r.status);
+      return r.json();
+    }).then(saved => {
       jrEntries[newDate] = saved;
       jrEditingOriginal = newDate;
       document.getElementById('jrDeleteBtn').style.display = '';
-      const statusEl = document.getElementById('jrSaveStatus');
-      statusEl.classList.add('show');
-      setTimeout(() => statusEl.classList.remove('show'), 1200);
+      jrShowSaveStatus('Saved ✓', false);
       jrRenderOverview();
-    }).catch(() => {});
+    }).catch(err => {
+      jrShowSaveStatus('Save failed (' + err.message + ') — check the server is deployed', true);
+    }).finally(() => {
+      if (saveBtn) saveBtn.disabled = false;
+    });
 
     if (movedDate && jrEntries[jrEditingOriginal]) {
       fetch('/journal/' + encodeURIComponent(jrEditingOriginal), { method: 'DELETE' })
-        .then(() => { delete jrEntries[jrEditingOriginal]; doSave(); });
+        .then(() => { delete jrEntries[jrEditingOriginal]; doSave(); })
+        .catch(err => { jrShowSaveStatus('Save failed (' + err.message + ')', true); if (saveBtn) saveBtn.disabled = false; });
     } else {
       doSave();
+    }
+  }
+
+  function jrShowSaveStatus(text, isError) {
+    const statusEl = document.getElementById('jrSaveStatus');
+    if (!statusEl) return;
+    clearTimeout(jrStatusTimer);
+    statusEl.textContent = text;
+    statusEl.classList.toggle('error', !!isError);
+    statusEl.classList.add('show');
+    if (!isError) {
+      jrStatusTimer = setTimeout(() => statusEl.classList.remove('show'), 1800);
     }
   }
 
